@@ -1,0 +1,31 @@
+name: Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Build Release
+      run: swift build -c release
+
+    - name: Verify Binary
+      # Never run the binary here: it is a menu bar agent with no --version flag,
+      # so it would block the runner until the job times out.
+      run: test -f .build/release/AIPulse
+
+    - name: Validate Scripts
+      run: |
+        bash -n scripts/collect.sh
+        bash -n scripts/refresh-limits.sh
+        bash -n scripts/set-interval.sh
+        python3 -m py_compile scripts/login.py scripts/apply-limits.py scripts/fetch-usage.py
+        bash -n install.sh
+        echo "All scripts valid"
