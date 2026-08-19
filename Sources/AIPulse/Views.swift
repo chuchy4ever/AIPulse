@@ -1041,15 +1041,32 @@ struct HistorySectionView: View {
     private func renderChart() -> some View {
         let language = appState.config?.language ?? "cs"
 
+        let sentLabel = L.t("history.sent_header", language)
+        let receivedLabel = L.t("history.received_header", language)
+
+        // One bar per period, split in two rather than two bars side by side:
+        // the received share is a fraction of a percent and would be invisible
+        // as its own column anyway.
         Chart {
             ForEach(rows, id: \.id) { item in
                 BarMark(
                     x: .value(L.t("history.day_header", language), item.label),
-                    y: .value(L.t("history.tokens_header", language), item.tokens)
+                    y: .value(L.t("history.tokens_header", language), item.sent)
                 )
-                .foregroundStyle(Color.blue.opacity(0.7))
+                .foregroundStyle(by: .value(L.t("history.tokens_header", language), sentLabel))
+
+                BarMark(
+                    x: .value(L.t("history.day_header", language), item.label),
+                    y: .value(L.t("history.tokens_header", language), item.received)
+                )
+                .foregroundStyle(by: .value(L.t("history.tokens_header", language), receivedLabel))
             }
         }
+        .chartForegroundStyleScale([
+            sentLabel: Color.blue.opacity(0.7),
+            receivedLabel: Color.orange
+        ])
+        .chartLegend(position: .bottom, spacing: 8)
         .frame(height: 200)
         .chartYAxis {
             AxisMarks(position: .leading, values: .automatic(desiredCount: 5)) { value in
@@ -1145,7 +1162,7 @@ struct HistorySectionView: View {
                     .frame(width: 75, alignment: .trailing)
                 Text(L.t("history.received_header", language)).font(.system(size: 11, weight: .semibold))
                     .frame(width: 75, alignment: .trailing)
-                Text(L.t("history.tokens_header", language)).font(.system(size: 11, weight: .semibold))
+                Text(L.t("history.total", language)).font(.system(size: 11, weight: .semibold))
                     .frame(width: 75, alignment: .trailing)
                 Spacer(minLength: 8)
                 Text(L.t("history.price_header", language)).font(.system(size: 11, weight: .semibold))
