@@ -1399,57 +1399,53 @@ struct LanguageSectionView: View {
             Text(L.t("language.title", language))
                 .font(.system(size: 14, weight: .semibold))
 
-            HStack(spacing: 12) {
-                languageButton(flag: "🇨🇿", label: "Čeština", isSelected: currentLanguage == "cs") {
-                    if var config = appState.config {
-                        config.language = "cs"
-                        appState.saveConfig(config)
-                    }
-                                    }
+            VStack(spacing: 6) {
+                languageRow(flag: "🇨🇿", label: "Čeština", isSelected: currentLanguage == "cs") {
+                    select("cs")
+                }
 
-                languageButton(flag: "🇬🇧", label: "English", isSelected: currentLanguage == "en") {
-                    if var config = appState.config {
-                        config.language = "en"
-                        appState.saveConfig(config)
-                    }
-                                    }
-
-                Spacer()
+                languageRow(flag: "🇬🇧", label: "English", isSelected: currentLanguage == "en") {
+                    select("en")
+                }
             }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text(L.t("language.note", language))
-                    .font(.system(size: 11, weight: .semibold))
-                Text(L.t("language.note_text", language))
-                    .font(.system(size: 10))
-                    .foregroundColor(.secondary)
-            }
-            .padding(8)
-            .background(Color.yellow.opacity(0.1))
-            .cornerRadius(4)
 
             Spacer()
         }
         .padding()
     }
 
+    private func select(_ code: String) {
+        guard var config = appState.config else { return }
+        config.language = code
+        appState.saveConfig(config)
+    }
+
     @ViewBuilder
-    private func languageButton(flag: String, label: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+    private func languageRow(flag: String, label: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            VStack(spacing: 8) {
+            HStack(spacing: 10) {
                 Text(flag)
-                    .font(.system(size: 28))
+                    .font(.system(size: 20))
 
                 Text(label)
-                    .font(.system(size: 11, weight: isSelected ? .semibold : .regular))
+                    .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
                     .foregroundColor(isSelected ? .white : .primary)
+
+                Spacer()
+
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.white)
+                }
             }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
-            .padding(.horizontal, 8)
-            .background(isSelected ? Color.blue : Color.clear)
-            .border(Color(isSelected ? .blue : .gray), width: 1.5)
-            .cornerRadius(4)
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(isSelected ? Color.accentColor : Color.primary.opacity(0.06))
+            )
         }
         .buttonStyle(.plain)
     }

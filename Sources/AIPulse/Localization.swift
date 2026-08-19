@@ -136,8 +136,6 @@ enum L {
 
             "language.title": "Jazyk",
             "language.interface_language": "Jazyk rozhraní",
-            "language.note": "Poznámka",
-            "language.note_text": "Volba se uloží, ale přepínání se projeví ihned.",
 
             "general.startup": "Spouštět po přihlášení",
             "general.refresh_interval": "Aktualizovat každých",
@@ -310,8 +308,6 @@ enum L {
 
             "language.title": "Language",
             "language.interface_language": "Interface language",
-            "language.note": "Note",
-            "language.note_text": "Settings are saved and take effect immediately.",
 
             "general.startup": "Launch on login",
             "general.refresh_interval": "Refresh every",
