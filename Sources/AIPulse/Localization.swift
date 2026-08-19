@@ -158,7 +158,6 @@ enum L {
 
             "settings.notifications": "Notifikace",
             "notifications.title": "Upozornění na výpadky",
-            "notifications.hint": "Vyber služby, u kterých chceš vědět, že spadly.",
             "notifications.empty": "Zatím nejsou známé žádné služby — počkej na první sběr dat.",
             "notifications.down_title": "Výpadek: %@",
             "notifications.up_title": "Zase v pořádku: %@",
@@ -330,7 +329,6 @@ enum L {
 
             "settings.notifications": "Notifications",
             "notifications.title": "Outage alerts",
-            "notifications.hint": "Pick the services you want to hear about when they go down.",
             "notifications.empty": "No services known yet - wait for the first collection.",
             "notifications.down_title": "Outage: %@",
             "notifications.up_title": "Back up: %@",

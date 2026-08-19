@@ -1471,13 +1471,8 @@ struct NotificationsSectionView: View {
         let hasOpenAIComponents = appState.data?.services.openai.components?.isEmpty == false
 
         return VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(L.t("notifications.title", language))
-                    .font(.system(size: 14, weight: .semibold))
-                Text(L.t("notifications.hint", language))
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-            }
+            Text(L.t("notifications.title", language))
+                .font(.system(size: 14, weight: .semibold))
 
             if let data = appState.data, hasAnthropicComponents || hasOpenAIComponents {
                 VStack(alignment: .leading, spacing: 12) {
