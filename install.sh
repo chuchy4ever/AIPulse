@@ -33,7 +33,7 @@ mkdir -p "$DATA_DIR"
 
 # 2. Copy scripts
 echo "2. Installing scripts to $DATA_DIR..."
-for script in collect.sh login.py set-interval.sh refresh-limits.sh apply-limits.py fetch-usage.py; do
+for script in collect.sh login.py oauth-login.py set-interval.sh refresh-limits.sh apply-limits.py fetch-usage.py; do
     # A missing script leaves a half-working install behind, so stop instead of warning.
     if [[ ! -f "$SCRIPTS_DIR/$script" ]]; then
         echo "ERROR: $SCRIPTS_DIR/$script not found"

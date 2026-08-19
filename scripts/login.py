@@ -115,6 +115,27 @@ display dialog "{message}" ¬
 
     return None
 
+def run_browser_login():
+    """The whole sign-in in the browser. Returns True when it went through."""
+    script = Path(__file__).with_name("oauth-login.py")
+    if not script.exists():
+        script = Path.home() / ".local/share/aipulse/oauth-login.py"
+
+    try:
+        result = subprocess.run(
+            [sys.executable, str(script)],
+            capture_output=True, text=True, timeout=360,
+        )
+    except Exception as e:
+        log_message(f"BROWSER_LOGIN_ERROR: {type(e).__name__}")
+        return False
+
+    # The reason matters here: it decides whether the fallback is worth trying,
+    # and a rate limit or a rejected redirect reads nothing alike.
+    log_message(f"BROWSER_LOGIN_RC_{result.returncode}: {result.stderr.strip()[:200]}")
+    return result.returncode == 0
+
+
 def run_login():
     log_message("LOGIN_START")
 
@@ -123,6 +144,17 @@ def run_login():
         show_dialog("Claude Code", "Už jsi přihlášený do Claude Code.")
         return True
 
+    if run_browser_login() and check_logged_in():
+        log_message("LOGIN_SUCCESS_BROWSER")
+        show_dialog("Claude Code", "Přihlášení proběhlo úspěšně.")
+        try:
+            subprocess.Popen(["bash", str(COLLECT_SCRIPT)])
+        except Exception as e:
+            log_message(f"ERROR_STARTING_COLLECT: {e}")
+        return True
+
+    # Falling back to the CLI: it shows a code in the browser instead, which the
+    # clipboard watch below picks up.
     log_message("STARTING_CLAUDE_AUTH_LOGIN")
 
     try:
