@@ -158,6 +158,7 @@ enum L {
             "general.work_days": "Pracovních dnů v týdnu",
             "general.update_button": "Aktualizovat data",
             "general.updating": "Stahuji…",
+            "general.startup_needs_approval": "macOS to chce ještě potvrdit v Nastavení systému → Obecné → Položky po přihlášení.",
             "general.error_startup": "Chyba: %@",
 
             "services.title": "Stav služeb",
@@ -340,6 +341,7 @@ enum L {
             "general.work_days": "Work days per week",
             "general.update_button": "Update data",
             "general.updating": "Downloading…",
+            "general.startup_needs_approval": "macOS wants this approved in System Settings → General → Login Items.",
             "general.error_startup": "Error: %@",
 
             "services.title": "Service Status",

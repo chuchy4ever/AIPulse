@@ -1204,8 +1204,30 @@ struct HistorySectionView: View {
 
 struct BarSettingsSectionView: View {
     @ObservedObject var appState: AppState
+    @State private var launchAtLogin = false
+    @State private var launchError: String?
 
     let styles = ["percentage", "compact", "progressBar", "batteryClassic", "iconWithBar"]
+    private func setLaunchAtLogin(_ enabled: Bool, language: String) {
+        do {
+            if enabled {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+        } catch {
+            launchError = String(format: L.t("general.error_startup", language), error.localizedDescription as NSString)
+            launchAtLogin = SMAppService.mainApp.status == .enabled
+            return
+        }
+
+        let status = SMAppService.mainApp.status
+        // macOS can accept the request and still park it until the user says yes
+        // in System Settings; without saying so the switch looks broken again.
+        launchError = status == .requiresApproval ? L.t("general.startup_needs_approval", language) : nil
+        launchAtLogin = status == .enabled
+    }
+
     var styleLabels: [String] {
         let language = appState.config?.language ?? "cs"
         return ["bar.style.percentage", "bar.style.compact", "bar.style.progressBar", "bar.style.battery", "bar.style.iconWithBar"].map { L.t($0, language) }
@@ -1378,25 +1400,28 @@ struct BarSettingsSectionView: View {
                         .frame(width: 110)
                     }
 
-                    HStack {
-                        Text(L.t("general.startup", language))
-                        Spacer()
-                        Toggle("", isOn: Binding(
-                            get: {
-                                SMAppService.mainApp.status == .enabled
-                            },
-                            set: { newValue in
-                                do {
-                                    if newValue {
-                                        try SMAppService.mainApp.register()
-                                    } else {
-                                        try SMAppService.mainApp.unregister()
-                                    }
-                                } catch {
-                                    appState.collectError = String(format: L.t("general.error_startup", language), error.localizedDescription)
-                                }
-                            }
-                        ))
+                    // The toggle needs state of its own: binding straight to
+                    // SMAppService leaves SwiftUI nothing to redraw on, so the
+                    // switch snapped back even when registration had worked.
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text(L.t("general.startup", language))
+                            Spacer()
+                            Toggle("", isOn: $launchAtLogin)
+                                .labelsHidden()
+                        }
+
+                        if let launchError = launchError {
+                            Text(launchError)
+                                .font(.system(size: 10))
+                                .foregroundColor(.orange)
+                        }
+                    }
+                    .onAppear {
+                        launchAtLogin = SMAppService.mainApp.status == .enabled
+                    }
+                    .onChange(of: launchAtLogin) { _, newValue in
+                        setLaunchAtLogin(newValue, language: language)
                     }
                 }
             }
