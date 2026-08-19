@@ -22,6 +22,24 @@ if [ -z "${TOKEN:-}" ]; then
   exit 1
 fi
 
+# Claude Code stores when the token dies; saying so up front beats a 401 that
+# reads like the service is down.
+EXPIRED=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null \
+  | python3 -c "
+import sys, json, time
+try:
+    d = json.load(sys.stdin)['claudeAiOauth']
+    print('yes' if d.get('expiresAt', 0) / 1000 < time.time() else 'no')
+except Exception:
+    print('no')
+" 2>/dev/null)
+
+if [ "$EXPIRED" = "yes" ]; then
+  log "FAILED expired"
+  echo "AUTH_EXPIRED" >&2
+  exit 1
+fi
+
 BODY_FILE=$(mktemp)
 # The token is passed on stdin, never as a process argument: argv is world-readable via ps.
 if ! printf '%s' "$TOKEN" | python3 "$DATA_DIR/fetch-usage.py" "$BODY_FILE"; then

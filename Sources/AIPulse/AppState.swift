@@ -607,7 +607,11 @@ extension AppState {
                     let language = self?.config?.language ?? "cs"
                     let raw = errorPipe.fileHandleForReading.readDataToEndOfFile()
                     let text = String(data: raw, encoding: .utf8) ?? ""
-                    failure = text.isEmpty ? L.t("error.limits_failed", language) : text
+                    if text.contains("AUTH_EXPIRED") {
+                        failure = L.t("error.auth_expired", language)
+                    } else {
+                        failure = text.isEmpty ? L.t("error.limits_failed", language) : text
+                    }
                 }
             } catch {
                 failure = error.localizedDescription

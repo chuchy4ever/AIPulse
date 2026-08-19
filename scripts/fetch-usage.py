@@ -19,7 +19,12 @@ def main() -> int:
         with urllib.request.urlopen(request, timeout=15) as response:
             payload = response.read()
     except urllib.error.HTTPError as error:
-        print(f"HTTP {error.code}", file=sys.stderr)
+        # 401 here means the stored access token has expired, which the app has
+        # to tell apart from a real outage: the fix is a new sign-in, not a retry.
+        if error.code == 401:
+            print("AUTH_EXPIRED", file=sys.stderr)
+        else:
+            print(f"HTTP {error.code}", file=sys.stderr)
         return 1
     except Exception as error:
         print(f"{type(error).__name__}", file=sys.stderr)
