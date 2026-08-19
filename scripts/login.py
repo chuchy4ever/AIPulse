@@ -115,8 +115,14 @@ display dialog "{message}" ¬
 
     return None
 
+# Return codes of oauth-login.py, in the only grouping that matters here:
+# whether reopening the browser with the older flow could still help.
+BROWSER_OK = 0
+BROWSER_USER_STOPPED = (2, 3, 4)   # timed out, refused, mismatched state
+
+
 def run_browser_login():
-    """The whole sign-in in the browser. Returns True when it went through."""
+    """The whole sign-in in the browser. Returns the script's exit code."""
     script = Path(__file__).with_name("oauth-login.py")
     if not script.exists():
         script = Path.home() / ".local/share/aipulse/oauth-login.py"
@@ -128,12 +134,12 @@ def run_browser_login():
         )
     except Exception as e:
         log_message(f"BROWSER_LOGIN_ERROR: {type(e).__name__}")
-        return False
+        return 1
 
     # The reason matters here: it decides whether the fallback is worth trying,
     # and a rate limit or a rejected redirect reads nothing alike.
     log_message(f"BROWSER_LOGIN_RC_{result.returncode}: {result.stderr.strip()[:200]}")
-    return result.returncode == 0
+    return result.returncode
 
 
 def run_login():
@@ -144,7 +150,9 @@ def run_login():
         show_dialog("Claude Code", "Už jsi přihlášený do Claude Code.")
         return True
 
-    if run_browser_login() and check_logged_in():
+    browser_rc = run_browser_login()
+
+    if browser_rc == BROWSER_OK and check_logged_in():
         log_message("LOGIN_SUCCESS_BROWSER")
         show_dialog("Claude Code", "Přihlášení proběhlo úspěšně.")
         try:
@@ -152,6 +160,13 @@ def run_login():
         except Exception as e:
             log_message(f"ERROR_STARTING_COLLECT: {e}")
         return True
+
+    # Walking away or refusing is an answer. Opening a second window with the
+    # older flow would read as the app ignoring it.
+    if browser_rc in BROWSER_USER_STOPPED:
+        log_message(f"LOGIN_ABORTED_BY_USER_RC_{browser_rc}")
+        show_dialog("Claude Code", "Přihlášení nedoběhlo. Zkus to znovu z nastavení.")
+        return False
 
     # Falling back to the CLI: it shows a code in the browser instead, which the
     # clipboard watch below picks up.

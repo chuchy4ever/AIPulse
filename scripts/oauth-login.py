@@ -146,10 +146,19 @@ def store(tokens):
             record = json.loads(current.stdout.strip())
         except json.JSONDecodeError:
             record = {}
+    elif "could not be found" not in current.stderr:
+        # Anything other than "no such record" means the record is there and we
+        # just cannot see it - a denied Keychain prompt, a locked keychain.
+        # Writing now would replace the MCP credentials with nothing.
+        raise RuntimeError(
+            f"Keychain nešel přečíst, nechávám ho být: {current.stderr.strip()[:120]}"
+        )
 
     previous = record.get("claudeAiOauth") or {}
     now_ms = int(time.time() * 1000)
-    expires_in = tokens.get("expires_in") or 0
+    # No expiry in the response means an expiry of "now", which reads as a dead
+    # token to everything downstream. An hour is short enough to be harmless.
+    expires_in = tokens.get("expires_in") or 3600
     scope = tokens.get("scope") or SCOPES
 
     oauth = {
