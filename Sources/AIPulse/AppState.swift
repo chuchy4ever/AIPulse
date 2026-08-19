@@ -54,6 +54,12 @@ class AppState: ObservableObject {
                 self.config = loadedConfig
                 self.error = loadError
                 self.updateBarDisplay()
+
+                if let data = loadedData, let config = loadedConfig {
+                    let watcher = ServiceWatcher()
+                    watcher.checkAndNotify(data: data, config: config)
+                }
+
                 NotificationCenter.default.post(name: NSNotification.Name("AppStateDidUpdate"), object: nil)
             }
         }
@@ -345,6 +351,151 @@ class AppState: ObservableObject {
                     let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
                     let errorText = String(data: errorData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                     let errorMsg = errorText.isEmpty ? L.t("error.unknown", lang) : errorText
+                    DispatchQueue.main.async {
+                        completion(false, errorMsg)
+                    }
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    completion(false, error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    func codexLogout(completion: @escaping (Bool, String?) -> Void) {
+        let findCodexProcess = Process()
+        findCodexProcess.executableURL = URL(fileURLWithPath: "/bin/sh")
+        findCodexProcess.arguments = ["-lc", "command -v codex"]
+
+        let findPipe = Pipe()
+        findCodexProcess.standardOutput = findPipe
+        findCodexProcess.standardError = Pipe()
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try findCodexProcess.run()
+                findCodexProcess.waitUntilExit()
+
+                let data = findPipe.fileHandleForReading.readDataToEndOfFile()
+                let codexPath = String(data: data, encoding: .utf8)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+
+                guard let codexPath = codexPath, !codexPath.isEmpty else {
+                    let lang = self.config?.language ?? "cs"
+                    let errorMsg = L.t("error.codex_not_found", lang)
+                    DispatchQueue.main.async {
+                        completion(false, errorMsg)
+                    }
+                    return
+                }
+
+                let logoutProcess = Process()
+                logoutProcess.executableURL = URL(fileURLWithPath: codexPath)
+                logoutProcess.arguments = ["logout"]
+
+                let errorPipe = Pipe()
+                logoutProcess.standardError = errorPipe
+
+                try logoutProcess.run()
+                logoutProcess.waitUntilExit()
+
+                if logoutProcess.terminationStatus == 0 {
+                    DispatchQueue.main.async {
+                        self.loadData()
+                        completion(true, nil)
+                    }
+                } else {
+                    let lang = self.config?.language ?? "cs"
+                    let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+                    let errorText = String(data: errorData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                    let errorMsg = errorText.isEmpty ? L.t("error.unknown", lang) : errorText
+                    DispatchQueue.main.async {
+                        completion(false, errorMsg)
+                    }
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    completion(false, error.localizedDescription)
+                }
+            }
+        }
+    }
+
+    func codexLogin(completion: @escaping (Bool, String?) -> Void) {
+        let findCodexProcess = Process()
+        findCodexProcess.executableURL = URL(fileURLWithPath: "/bin/sh")
+        findCodexProcess.arguments = ["-lc", "command -v codex"]
+
+        let findPipe = Pipe()
+        findCodexProcess.standardOutput = findPipe
+        findCodexProcess.standardError = Pipe()
+
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                try findCodexProcess.run()
+                findCodexProcess.waitUntilExit()
+
+                let data = findPipe.fileHandleForReading.readDataToEndOfFile()
+                let codexPath = String(data: data, encoding: .utf8)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+
+                guard let codexPath = codexPath, !codexPath.isEmpty else {
+                    let lang = self.config?.language ?? "cs"
+                    let errorMsg = L.t("error.codex_not_found", lang)
+                    DispatchQueue.main.async {
+                        completion(false, errorMsg)
+                    }
+                    return
+                }
+
+                let loginProcess = Process()
+                loginProcess.executableURL = URL(fileURLWithPath: codexPath)
+                loginProcess.arguments = ["login"]
+
+                // Do not wait for it: codex login stays up serving its local callback
+                // until the browser flow finishes, so the polling below is the signal.
+                try loginProcess.run()
+
+                let startTime = Date()
+                let timeout: TimeInterval = 180
+
+                DispatchQueue.global(qos: .userInitiated).async {
+                    while Date().timeIntervalSince(startTime) < timeout {
+                        let statusProcess = Process()
+                        statusProcess.executableURL = URL(fileURLWithPath: codexPath)
+                        statusProcess.arguments = ["login", "status"]
+
+                        // codex login status reports on stderr, so both streams
+                        // are merged - reading stdout alone never sees the answer.
+                        let outputPipe = Pipe()
+                        statusProcess.standardOutput = outputPipe
+                        statusProcess.standardError = outputPipe
+
+                        do {
+                            try statusProcess.run()
+                            statusProcess.waitUntilExit()
+
+                            if statusProcess.terminationStatus == 0 {
+                                let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+                                let outputText = String(data: outputData, encoding: .utf8) ?? ""
+                                if outputText.contains("Logged in") {
+                                    DispatchQueue.main.async {
+                                        self.loadData()
+                                        completion(true, nil)
+                                    }
+                                    return
+                                }
+                            }
+                        } catch {
+                            break
+                        }
+
+                        Thread.sleep(forTimeInterval: 2)
+                    }
+
+                    let lang = self.config?.language ?? "cs"
+                    let errorMsg = L.t("login.timed_out", lang)
                     DispatchQueue.main.async {
                         completion(false, errorMsg)
                     }

@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+export PATH="$HOME/.local/bin:$HOME/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 # launchd runs with a minimal environment, so a node installed via nvm is not on PATH.
 # Take the newest version that actually carries ccusage - older ones are still on disk.
 if ! command -v ccusage >/dev/null 2>&1 && [ -d "$HOME/.nvm/versions/node" ]; then
@@ -105,19 +105,39 @@ EOF
     echo "{}" > "$TMP_ANTHROPIC"
   fi
 
-  if curl -fsS --max-time 10 https://status.openai.com/api/v2/status.json > "$TMP_OPENAI" 2>&1; then
+  if curl -fsS --max-time 10 https://status.openai.com/api/v2/summary.json > "$TMP_OPENAI" 2>&1; then
     echo "[$(date -Iseconds)] OpenAI status: OK"
   else
     echo "[$(date -Iseconds)] OpenAI status: FAILED (network/timeout)"
     echo "{}" > "$TMP_OPENAI"
   fi
 
+  # macOS has no timeout(1), and a CLI that hangs would keep this launchd job
+  # alive forever, so bound both auth probes with perl's alarm.
+  run_bounded() {
+    perl -e 'alarm shift; exec @ARGV' "$@" 2>/dev/null || true
+  }
+
+  # codex login status reports on stderr, so dropping it would always read as
+  # "not logged in"; both streams are merged and parsed as plain text.
+  run_bounded_merged() {
+    perl -e 'alarm shift; exec @ARGV' "$@" 2>&1 || true
+  }
+
   CLAUDE_PATH=$(command -v claude 2>/dev/null || true)
   if [ -n "$CLAUDE_PATH" ]; then
-    AUTH_OUTPUT=$("$CLAUDE_PATH" auth status 2>/dev/null || echo '{"loggedIn": false}')
+    AUTH_OUTPUT=$(run_bounded 10 "$CLAUDE_PATH" auth status)
+    [ -n "$AUTH_OUTPUT" ] || AUTH_OUTPUT='{"loggedIn": false}'
     echo "$AUTH_OUTPUT" > "$DATA_DIR/.tmp.auth.json"
   else
     echo '{"loggedIn": false}' > "$DATA_DIR/.tmp.auth.json"
+  fi
+
+  CODEX_PATH=$(command -v codex 2>/dev/null || true)
+  if [ -n "$CODEX_PATH" ]; then
+    run_bounded_merged 10 "$CODEX_PATH" login status > "$DATA_DIR/.tmp.codex.auth.txt"
+  else
+    echo "" > "$DATA_DIR/.tmp.codex.auth.txt"
   fi
 
   echo "[$(date -Iseconds)] Aggregating data via Python..."
@@ -242,6 +262,34 @@ def safe_load_json(filepath):
     except:
         return {}
 
+def process_service_status(status_raw):
+    """Extract status, components (with id), and incidents from summary.json."""
+    result = {
+        "status": {},
+        "components": [],
+        "incidents": []
+    }
+    if not status_raw:
+        return result
+    if "status" in status_raw:
+        result["status"] = status_raw["status"]
+    if "components" in status_raw:
+        for comp in status_raw["components"]:
+            if not comp.get("group", False):
+                result["components"].append({
+                    "id": comp.get("id"),
+                    "name": comp.get("name", ""),
+                    "status": comp.get("status", "unknown")
+                })
+    if "incidents" in status_raw:
+        for incident in status_raw["incidents"]:
+            result["incidents"].append({
+                "name": incident.get("name", ""),
+                "status": incident.get("status", ""),
+                "impact": incident.get("impact", "")
+            })
+    return result
+
 old_data = safe_load_json(os.path.join(data_dir, "data.json"))
 old_limits = old_data.get("limits") or {}
 
@@ -262,42 +310,38 @@ if not codex_daily_data:
     codex_daily_data = {"daily": []}
 
 anthropic_status_raw = safe_load_json(os.path.join(data_dir, ".tmp.anthropic.json"))
+anthropic_result = process_service_status(anthropic_status_raw)
 
-# Parse Anthropic status and extract components, incidents
-anthropic_status = {}
-anthropic_components = []
-anthropic_incidents = []
-
-if anthropic_status_raw:
-    # Preserve the top-level status object for backward compatibility
-    if "status" in anthropic_status_raw:
-        anthropic_status["status"] = anthropic_status_raw["status"]
-
-    # Extract components (filter out groups)
-    if "components" in anthropic_status_raw:
-        for comp in anthropic_status_raw["components"]:
-            if not comp.get("group", False):
-                anthropic_components.append({
-                    "name": comp.get("name", ""),
-                    "status": comp.get("status", "unknown")
-                })
-
-    # Extract incidents
-    if "incidents" in anthropic_status_raw:
-        for incident in anthropic_status_raw["incidents"]:
-            anthropic_incidents.append({
-                "name": incident.get("name", ""),
-                "status": incident.get("status", ""),
-                "impact": incident.get("impact", "")
-            })
-
-openai_status = safe_load_json(os.path.join(data_dir, ".tmp.openai.json"))
+openai_status_raw = safe_load_json(os.path.join(data_dir, ".tmp.openai.json"))
+openai_result = process_service_status(openai_status_raw)
 
 errors_json = safe_load_json(os.path.join(data_dir, ".tmp.errors.json"))
 if not errors_json:
     errors_json = []
 
-auth_status = {}
+def parse_codex_login_status(output):
+    """Parse 'codex login status' output into auth dict."""
+    result = {"loggedIn": False}
+    if "Logged in" in output:
+        result["loggedIn"] = True
+        if "API key" in output:
+            result["method"] = "API key"
+        elif "ChatGPT" in output:
+            result["method"] = "ChatGPT"
+        else:
+            result["method"] = None
+        parts = output.split(" - ")
+        if len(parts) > 1:
+            account = parts[-1].strip()
+            if "***" in account:
+                result["account"] = account
+            else:
+                result["account"] = None
+        else:
+            result["account"] = None
+    return result
+
+claude_auth = {}
 try:
     auth_file = os.path.join(data_dir, ".tmp.auth.json")
     if os.path.exists(auth_file):
@@ -305,11 +349,22 @@ try:
             auth_output = f.read().strip()
             if auth_output:
                 try:
-                    auth_status = json.loads(auth_output)
+                    claude_auth = json.loads(auth_output)
                 except:
-                    auth_status = {"loggedIn": False}
+                    claude_auth = {"loggedIn": False}
 except:
-    auth_status = {"loggedIn": False}
+    claude_auth = {"loggedIn": False}
+
+codex_auth = {"loggedIn": False}
+try:
+    codex_auth_file = os.path.join(data_dir, ".tmp.codex.auth.txt")
+    if os.path.exists(codex_auth_file):
+        with open(codex_auth_file, 'r') as f:
+            codex_output = f.read().strip()
+            if codex_output:
+                codex_auth = parse_codex_login_status(codex_output)
+except:
+    codex_auth = {"loggedIn": False}
 
 config_file = os.path.join(data_dir, "config.json")
 active_provider = "claude"
@@ -338,14 +393,13 @@ output = {
         "dailyData": codex_daily_data.get("daily", [])
     },
     "services": {
-        "anthropic": {
-            "status": anthropic_status.get("status", {}),
-            "components": anthropic_components,
-            "incidents": anthropic_incidents
-        },
-        "openai": openai_status
+        "anthropic": anthropic_result,
+        "openai": openai_result
     },
-    "auth": auth_status,
+    "auth": {
+        "claude": claude_auth,
+        "codex": codex_auth
+    },
     "errors": errors_json
 }
 
@@ -526,6 +580,6 @@ else
   exit 1
 fi
 
-rm -f "$TMP_WEEKLY" "$TMP_DAILY" "$TMP_MONTHLY" "$TMP_CODEX" "$TMP_ANTHROPIC" "$TMP_OPENAI" "$ERRORS_FILE" "$DATA_DIR/.tmp.auth.json"
+rm -f "$TMP_WEEKLY" "$TMP_DAILY" "$TMP_MONTHLY" "$TMP_CODEX" "$TMP_ANTHROPIC" "$TMP_OPENAI" "$ERRORS_FILE" "$DATA_DIR/.tmp.auth.json" "$DATA_DIR/.tmp.codex.auth.txt"
 
 echo "[$(date -Iseconds)] Collection complete." >> "$LOG_FILE"

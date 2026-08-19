@@ -2,7 +2,7 @@ import Foundation
 
 struct UsageData: Codable {
     let generatedAt: String
-    let auth: Auth
+    let auth: AuthByProvider
     let claude: Provider
     let codex: Provider
     let limits: Limits?
@@ -11,16 +11,44 @@ struct UsageData: Codable {
     let aggregations: Aggregations
 }
 
-struct Auth: Codable {
+struct ProviderAuth: Codable {
     let loggedIn: Bool
     let email: String?
     let subscriptionType: String?
+    let method: String?
+    let account: String?
+
+    init(loggedIn: Bool = false, email: String? = nil, subscriptionType: String? = nil, method: String? = nil, account: String? = nil) {
+        self.loggedIn = loggedIn
+        self.email = email
+        self.subscriptionType = subscriptionType
+        self.method = method
+        self.account = account
+    }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         loggedIn = try c.decodeIfPresent(Bool.self, forKey: .loggedIn) ?? false
         email = try c.decodeIfPresent(String.self, forKey: .email)
         subscriptionType = try c.decodeIfPresent(String.self, forKey: .subscriptionType)
+        method = try c.decodeIfPresent(String.self, forKey: .method)
+        account = try c.decodeIfPresent(String.self, forKey: .account)
+    }
+}
+
+struct AuthByProvider: Codable {
+    let claude: ProviderAuth
+    let codex: ProviderAuth
+
+    init(claude: ProviderAuth = ProviderAuth(), codex: ProviderAuth = ProviderAuth()) {
+        self.claude = claude
+        self.codex = codex
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        claude = try c.decodeIfPresent(ProviderAuth.self, forKey: .claude) ?? ProviderAuth()
+        codex = try c.decodeIfPresent(ProviderAuth.self, forKey: .codex) ?? ProviderAuth()
     }
 }
 
@@ -127,14 +155,29 @@ struct ServiceStatus: Codable {
 }
 
 struct ServiceComponent: Codable {
+    let id: String
     let name: String
     let status: String
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decodeIfPresent(String.self, forKey: .id) ?? ""
+        name = try c.decodeIfPresent(String.self, forKey: .name) ?? ""
+        status = try c.decodeIfPresent(String.self, forKey: .status) ?? "unknown"
+    }
 }
 
 struct ServiceIncident: Codable {
     let name: String
     let status: String
     let impact: String
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = try c.decodeIfPresent(String.self, forKey: .name) ?? ""
+        status = try c.decodeIfPresent(String.self, forKey: .status) ?? ""
+        impact = try c.decodeIfPresent(String.self, forKey: .impact) ?? ""
+    }
 }
 
 struct StatusDetail: Codable {
@@ -190,9 +233,10 @@ struct Config: Codable {
     var barStyle: String = "percentage"
     var language: String = "cs"
     var historyPeriod: String = "week"
+    var notifyServices: [String] = []
 
     init(activeProvider: String = "claude", barMetric: String = "weekly", workDays: Int = 5,
-         refreshMinutes: Int = 5, barStyle: String = "percentage", language: String = "cs", historyPeriod: String = "week") {
+         refreshMinutes: Int = 5, barStyle: String = "percentage", language: String = "cs", historyPeriod: String = "week", notifyServices: [String] = []) {
         self.activeProvider = activeProvider
         self.barMetric = barMetric
         self.workDays = workDays
@@ -200,6 +244,7 @@ struct Config: Codable {
         self.barStyle = barStyle
         self.language = language
         self.historyPeriod = historyPeriod
+        self.notifyServices = notifyServices
     }
 
     init(from decoder: Decoder) throws {
@@ -211,5 +256,6 @@ struct Config: Codable {
         barStyle = try container.decodeIfPresent(String.self, forKey: .barStyle) ?? "percentage"
         language = try container.decodeIfPresent(String.self, forKey: .language) ?? "cs"
         historyPeriod = try container.decodeIfPresent(String.self, forKey: .historyPeriod) ?? "week"
+        notifyServices = try container.decodeIfPresent([String].self, forKey: .notifyServices) ?? []
     }
 }

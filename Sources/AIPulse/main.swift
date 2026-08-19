@@ -48,6 +48,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         )
 
         refreshTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            self?.appState?.loadData()
             self?.updateStatusBarView()
         }
     }

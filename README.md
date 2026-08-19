@@ -14,7 +14,9 @@ AIPulse reads your local agent logs and your own account quota. It runs entirely
 - **Quota alerts** — session and weekly limits with countdown to reset
 - **Usage patterns** — graphs by day of week, model breakdown (weekly and total), history by day/week/month
 - **Service status** — live incident and component status from Anthropic and OpenAI
+- **Outage alerts** — per-component, opt-in: pick the services you want to hear about
 - **Flexible display** — five bar styles: text, compact dot, progress bar, battery, or icon + bar
+- **Both providers** — sign in to Claude Code and Codex separately, from the app
 - **Multi-language** — Czech and English, settable in preferences
 - **Configurable collection** — choose refresh interval (default 5 minutes via launchd) and work week length
 - **Fast limits refresh** — dedicated script fetches quota percentages in under a second
@@ -92,6 +94,41 @@ instead, and strip the `auth` block from anything you attach.
 
 **One thing you should know before installing.** To read your quota, AIPulse uses the OAuth token that Claude Code stores in your macOS Keychain — the same credential your own CLI uses. Anthropic's terms cover using a Claude subscription through Anthropic's own products, and a third-party tool reading that token is not clearly within them. The token stays on your machine and is used only to query your own usage, but this is your call to make, not ours. If you are not comfortable with it, the token history features still work without it — only the session and weekly percentages will be unavailable.
 
+## Signing in
+
+Settings → Sign-in has a tile for each provider, and the panel below follows
+whichever one is selected - Claude Code shows the account e-mail and plan, Codex
+shows how it is authenticated and against which account.
+
+Claude Code signs in through its own browser flow. Codex runs `codex login`,
+which opens a browser and completes on its own local callback; the app polls
+`codex login status` until it reports success, so there is nothing to copy or
+paste either way. Both CLIs are located through a login shell, so an install in
+`~/bin` or through nvm is found the same as one in `/usr/local/bin`.
+
+## Outage alerts
+
+Settings → Notifications lists every component both status pages report - six for
+Anthropic, around twenty-five for OpenAI - each with a switch and a dot showing
+its current state. Nothing is selected by default, so no alerts are sent until
+you pick something.
+
+An alert goes out when a selected component leaves `operational`, and again when
+it comes back. A component seen for the first time is only recorded, never
+announced, so installing does not set off an avalanche. The check runs whenever
+the app reloads its data, which is every 60 seconds; the data itself is at most
+as fresh as the last collection.
+
+**Alerts arrive as "Script Editor", not as AIPulse.** macOS only hands
+`UNUserNotificationCenter` to apps signed with a real Developer ID - an ad-hoc
+signature is refused outright with *"Notifications are not allowed for this
+application"*, even from `/Applications`. Delivery therefore goes through
+`osascript`, which needs no signature and no entitlement, at the cost of the
+alerts being attributed to Script Editor in System Settings → Notifications.
+Turning individual alerts off is done in the app, not there. Signing the bundle
+with a Developer ID certificate and switching the delivery call is all it would
+take to change this.
+
 ## Configuration
 
 Configuration file: `~/.local/share/aipulse/config.json`
@@ -105,6 +142,7 @@ Configuration file: `~/.local/share/aipulse/config.json`
 | `refreshMinutes` | int | 5, 10, 15, 30, 60 | 5 | Interval for launchd collection (minutes) |
 | `language` | string | `"cs"`, `"en"` | `"cs"` | UI language |
 | `historyPeriod` | string | `"day"`, `"week"`, `"month"` | `"week"` | Default view in history tab |
+| `notifyServices` | string[] | `"anthropic:<id>"`, `"openai:<id>"` | `[]` | Components to raise outage alerts for; set through Settings → Notifications |
 
 Example:
 
@@ -116,7 +154,8 @@ Example:
   "language": "en",
   "refreshMinutes": 5,
   "workDays": 5,
-  "historyPeriod": "week"
+  "historyPeriod": "week",
+  "notifyServices": []
 }
 ```
 

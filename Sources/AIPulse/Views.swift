@@ -625,6 +625,7 @@ struct SettingsView: View {
                 Label(L.t("settings.section.general", language), systemImage: "square.fill").tag("general")
                 Label(L.t("settings.language", language), systemImage: "globe").tag("language")
                 Label(L.t("settings.history", language), systemImage: "chart.bar.fill").tag("history")
+                Label(L.t("settings.notifications", language), systemImage: "bell").tag("notifications")
             }
             .listStyle(.sidebar)
         } detail: {
@@ -637,6 +638,8 @@ struct SettingsView: View {
                 LanguageSectionView(appState: appState)
             case "history":
                 HistorySectionView(appState: appState)
+            case "notifications":
+                NotificationsSectionView(appState: appState)
             default:
                 Text(L.t("settings.general_title", language))
             }
@@ -650,6 +653,7 @@ struct LoginSectionView: View {
     @ObservedObject var appState: AppState
     @State private var showLogoutConfirm = false
     @State private var logoutError: String?
+    @State private var isLoggingIn = false
 
     func runLoginScript() {
         let scriptPath = FileManager.default.homeDirectoryForCurrentUser
@@ -667,6 +671,9 @@ struct LoginSectionView: View {
     var body: some View {
         let language = appState.config?.language ?? "cs"
         let activeProvider = appState.config?.activeProvider ?? "claude"
+        let currentAuth = activeProvider == "claude"
+            ? appState.data?.auth.claude
+            : appState.data?.auth.codex
 
         return VStack(alignment: .leading, spacing: 16) {
             Text(L.t("login.title", language))
@@ -683,14 +690,14 @@ struct LoginSectionView: View {
                             config.activeProvider = "claude"
                             appState.saveConfig(config)
                         }
-                                            }
+                    }
 
                     providerTile(label: L.t("login.provider_codex", language), isSelected: activeProvider == "codex") {
                         if var config = appState.config {
                             config.activeProvider = "codex"
                             appState.saveConfig(config)
                         }
-                                            }
+                    }
 
                     Spacer()
                 }
@@ -698,7 +705,7 @@ struct LoginSectionView: View {
 
             Divider()
 
-            if let auth = appState.data?.auth {
+            if let auth = currentAuth {
                 HStack(spacing: 8) {
                     Circle()
                         .fill(auth.loggedIn ? Color.green : Color.red)
@@ -708,43 +715,101 @@ struct LoginSectionView: View {
                     Spacer()
                 }
 
-                if auth.loggedIn, let email = auth.email {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(L.t("login.email_label", language))
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                        Text(email)
-                            .font(.system(size: 11, design: .monospaced))
-
-                        if let subType = auth.subscriptionType {
-                            Text(L.t("login.subscription_label", language))
+                if activeProvider == "claude" {
+                    if auth.loggedIn, let email = auth.email {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(L.t("login.email_label", language))
                                 .font(.system(size: 11))
                                 .foregroundColor(.secondary)
-                                .padding(.top, 8)
-                            Text(subType)
+                            Text(email)
                                 .font(.system(size: 11, design: .monospaced))
+
+                            if let subType = auth.subscriptionType {
+                                Text(L.t("login.subscription_label", language))
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                                    .padding(.top, 8)
+                                Text(subType)
+                                    .font(.system(size: 11, design: .monospaced))
+                            }
                         }
-                    }
 
-                    Button(L.t("login.logout_button", language), role: .destructive) {
-                        showLogoutConfirm = true
-                    }
-                    .buttonStyle(.bordered)
-                    .padding(.top, 8)
+                        Button(L.t("login.logout_button", language), role: .destructive) {
+                            showLogoutConfirm = true
+                        }
+                        .buttonStyle(.bordered)
+                        .padding(.top, 8)
 
-                    if let error = logoutError {
-                        Text(error)
-                            .font(.system(size: 10))
-                            .foregroundColor(.red)
-                            .padding(8)
-                            .background(Color.red.opacity(0.1))
-                            .cornerRadius(4)
+                        if let error = logoutError {
+                            Text(error)
+                                .font(.system(size: 10))
+                                .foregroundColor(.red)
+                                .padding(8)
+                                .background(Color.red.opacity(0.1))
+                                .cornerRadius(4)
+                        }
+                    } else {
+                        Button(L.t("login.login_button", language)) {
+                            runLoginScript()
+                        }
+                        .buttonStyle(.bordered)
                     }
                 } else {
-                    Button(L.t("login.login_button", language)) {
-                        runLoginScript()
+                    if auth.loggedIn {
+                        VStack(alignment: .leading, spacing: 4) {
+                            if let method = auth.method {
+                                Text(L.t("login.codex_method", language))
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                                Text(method)
+                                    .font(.system(size: 11, design: .monospaced))
+                            }
+
+                            if let account = auth.account {
+                                Text(L.t("login.codex_account", language))
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                                    .padding(.top, auth.method == nil ? 0 : 8)
+                                Text(account)
+                                    .font(.system(size: 11, design: .monospaced))
+                            }
+                        }
+
+                        Button(L.t("login.logout_button", language), role: .destructive) {
+                            showLogoutConfirm = true
+                        }
+                        .buttonStyle(.bordered)
+                        .padding(.top, 8)
+
+                        if let error = logoutError {
+                            Text(error)
+                                .font(.system(size: 10))
+                                .foregroundColor(.red)
+                                .padding(8)
+                                .background(Color.red.opacity(0.1))
+                                .cornerRadius(4)
+                        }
+                    } else {
+                        if isLoggingIn {
+                            Text(L.t("login.in_progress", language))
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                        } else {
+                            Button(L.t("login.login_button", language)) {
+                                isLoggingIn = true
+                                appState.codexLogin { success, error in
+                                    isLoggingIn = false
+                                    if !success, let error = error {
+                                        logoutError = error
+                                    } else {
+                                        logoutError = nil
+                                    }
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .disabled(isLoggingIn)
+                        }
                     }
-                    .buttonStyle(.bordered)
                 }
             }
 
@@ -753,11 +818,21 @@ struct LoginSectionView: View {
         .padding()
         .alert(L.t("login.logout_confirm_title", language), isPresented: $showLogoutConfirm) {
             Button(L.t("login.logout_button", language), role: .destructive) {
-                appState.logout { success, error in
-                    if !success, let error = error {
-                        logoutError = error
-                    } else {
-                        logoutError = nil
+                if activeProvider == "claude" {
+                    appState.logout { success, error in
+                        if !success, let error = error {
+                            logoutError = error
+                        } else {
+                            logoutError = nil
+                        }
+                    }
+                } else {
+                    appState.codexLogout { success, error in
+                        if !success, let error = error {
+                            logoutError = error
+                        } else {
+                            logoutError = nil
+                        }
                     }
                 }
             }
@@ -1377,6 +1452,127 @@ struct LanguageSectionView: View {
             .cornerRadius(4)
         }
         .buttonStyle(.plain)
+    }
+}
+
+struct NotificationsSectionView: View {
+    @ObservedObject var appState: AppState
+
+    var body: some View {
+        let language = appState.config?.language ?? "cs"
+        let hasAnthropicComponents = appState.data?.services.anthropic.components?.isEmpty == false
+        let hasOpenAIComponents = appState.data?.services.openai.components?.isEmpty == false
+
+        return VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(L.t("notifications.title", language))
+                    .font(.system(size: 14, weight: .semibold))
+                Text(L.t("notifications.hint", language))
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+
+            if let data = appState.data, hasAnthropicComponents || hasOpenAIComponents {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 16) {
+                        // Anthropic section
+                        if let components = data.services.anthropic.components, !components.isEmpty {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(L.t("notifications.provider_anthropic", language))
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(.secondary)
+
+                                VStack(alignment: .leading, spacing: 6) {
+                                    ForEach(components, id: \.id) { component in
+                                        componentToggleRow(component: component, provider: "anthropic", appState: appState, language: language)
+                                    }
+                                }
+                            }
+                        }
+
+                        // OpenAI section
+                        if let components = data.services.openai.components, !components.isEmpty {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(L.t("notifications.provider_openai", language))
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(.secondary)
+
+                                VStack(alignment: .leading, spacing: 6) {
+                                    ForEach(components, id: \.id) { component in
+                                        componentToggleRow(component: component, provider: "openai", appState: appState, language: language)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .padding(.vertical, 8)
+                }
+                .frame(maxHeight: 300)
+
+                Divider()
+
+                Button(action: {
+                    let watcher = ServiceWatcher()
+                    watcher.sendTestNotification(language: language)
+                }) {
+                    HStack {
+                        Image(systemName: "bell.badge")
+                        Text(L.t("notifications.test", language))
+                    }
+                }
+                .buttonStyle(.bordered)
+            } else {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(L.t("notifications.empty", language))
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+                .padding(.vertical, 16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            Spacer()
+        }
+        .padding()
+    }
+
+    @ViewBuilder
+    private func componentToggleRow(component: ServiceComponent, provider: String, appState: AppState, language: String) -> some View {
+        let key = "\(provider):\(component.id)"
+        let isSelected = appState.config?.notifyServices.contains(key) ?? false
+        let statusColor = component.status == "operational" ? Color.green : Color.red
+
+        HStack(spacing: 12) {
+            Toggle("", isOn: Binding(
+                get: { isSelected },
+                set: { newValue in
+                    if var config = appState.config {
+                        if newValue {
+                            if !config.notifyServices.contains(key) {
+                                config.notifyServices.append(key)
+                            }
+                        } else {
+                            config.notifyServices.removeAll { $0 == key }
+                        }
+                        appState.saveConfig(config)
+                    }
+                }
+            ))
+
+            Circle()
+                .fill(statusColor)
+                .frame(width: 8, height: 8)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(component.name)
+                    .font(.system(size: 11))
+                Text(L.t("status.\(component.status)", language))
+                    .font(.system(size: 9))
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+        }
     }
 }
 
