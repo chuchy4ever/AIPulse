@@ -2,6 +2,8 @@ import Foundation
 import SwiftUI
 
 class AppState: ObservableObject {
+    static var isSnapshotting = false
+
     @Published var data: UsageData?
     @Published var config: Config?
     @Published var error: String?
@@ -55,7 +57,9 @@ class AppState: ObservableObject {
                 self.error = loadError
                 self.updateBarDisplay()
 
-                if let data = loadedData, let config = loadedConfig {
+                // Not while snapshotting: the watcher writes its state file and can
+                // fire a notification, and a screenshot tool must do neither.
+                if !AppState.isSnapshotting, let data = loadedData, let config = loadedConfig {
                     let watcher = ServiceWatcher()
                     watcher.checkAndNotify(data: data, config: config)
                 }

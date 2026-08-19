@@ -37,8 +37,8 @@ if ! mkdir "$LOCK_DIR" 2>/dev/null; then
     echo "[$(date -Iseconds)] Removing lock left by a dead run" >> "$LOG_FILE"
     rm -rf "$LOCK_DIR"
     mkdir "$LOCK_DIR" 2>/dev/null || exit 0
-  elif find "$LOCK_DIR" -maxdepth 0 -mmin +30 -print -quit 2>/dev/null | grep -q .; then
-    echo "[$(date -Iseconds)] Removing stale lock (older than 30 minutes)" >> "$LOG_FILE"
+  elif [ ! -f "$LOCK_DIR/pid" ] && find "$LOCK_DIR" -maxdepth 0 -mmin +30 -print -quit 2>/dev/null | grep -q .; then
+    echo "[$(date -Iseconds)] Removing stale lock with no owner recorded" >> "$LOG_FILE"
     rm -rf "$LOCK_DIR"
     mkdir "$LOCK_DIR" 2>/dev/null || exit 0
   else
@@ -491,10 +491,22 @@ output["aggregations"]["byModel"] = [
     for k, v in sorted(by_model.items(), key=lambda x: x[1]["tokens"], reverse=True)
 ]
 
+# From daily rows, like weeklyHistory: ccusage's weekly buckets start on Sunday,
+# so its last entry carries a day that the ISO week below it does not - the
+# popover was reporting a billion tokens the history table did not show.
 current_week_by_model = defaultdict(lambda: {"tokens": 0, "cost": 0})
-if claude_weekly_data.get("weekly"):
-    last_week_entry = claude_weekly_data["weekly"][-1]
-    for model_breakdown in last_week_entry.get("modelBreakdowns", []):
+current_iso_week = datetime.now().isocalendar()[:2]
+current_week_days = []
+for entry in claude_daily_data.get("daily", []):
+    period_str = entry.get("period", "")
+    try:
+        if datetime.fromisoformat(period_str).isocalendar()[:2] == current_iso_week:
+            current_week_days.append(entry)
+    except Exception:
+        pass
+
+for day_entry in current_week_days:
+    for model_breakdown in day_entry.get("modelBreakdowns", []):
         model_name = model_breakdown.get("modelName", "unknown")
         total = model_breakdown.get("totalTokens", 0)
         if total == 0:

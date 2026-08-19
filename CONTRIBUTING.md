@@ -55,10 +55,12 @@ Strings are defined in `Localization.swift` as `[String: String]` dictionaries f
 It renders the popover offscreen at 2x with `ImageRenderer` and exits. Regenerate
 it whenever the popover changes rather than taking a new screenshot by hand.
 
-Only the popover can be rendered this way. `ImageRenderer` refuses anything
-AppKit-backed - `NavigationSplitView`, a segmented `Picker`, `ProgressView`,
-`ScrollView` content - and draws a yellow placeholder block instead, so the
-settings panes have to be captured with a real screen capture.
+Only the popover is rendered, and only the popover can be: `ImageRenderer`
+refuses anything AppKit-backed - `NavigationSplitView`, a segmented `Picker`,
+`ProgressView`, `ScrollView` content - and draws a yellow placeholder block
+instead, so the settings panes need a real screen capture. Snapshot mode also
+skips the service watcher, so taking a picture never writes state or raises an
+alert.
 
 ## Runtime Data
 

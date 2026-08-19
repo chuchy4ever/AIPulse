@@ -1319,7 +1319,6 @@ struct BarSettingsSectionView: View {
     @ObservedObject var appState: AppState
     @State private var launchAtLogin = false
     @State private var launchError: String?
-    @State private var isInitializing = true
 
     let styles = ["percentage", "compact", "progressBar", "batteryClassic", "iconWithBar"]
     private func setLaunchAtLogin(_ enabled: Bool, language: String) {
@@ -1527,14 +1526,14 @@ struct BarSettingsSectionView: View {
                         }
                     }
                     .onAppear {
-                        isInitializing = true
                         launchAtLogin = SMAppService.mainApp.status == .enabled
-                        isInitializing = false
                     }
                     .onChange(of: launchAtLogin) { _, newValue in
-                        if !isInitializing {
-                            setLaunchAtLogin(newValue, language: language)
-                        }
+                        // onChange runs a cycle after onAppear, so a flag raised and
+                        // lowered there is already down by now. Ask the system
+                        // instead: matching state means nobody touched the switch.
+                        guard newValue != (SMAppService.mainApp.status == .enabled) else { return }
+                        setLaunchAtLogin(newValue, language: language)
                     }
                 }
             }

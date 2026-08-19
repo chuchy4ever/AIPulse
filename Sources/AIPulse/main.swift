@@ -78,6 +78,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             // .transient alone does not dismiss this: as an accessory app we are
             // not active, so a click in another app never reaches AppKit's own
             // dismissal. Watch for it ourselves while the popover is up.
+            removeOutsideClickMonitor()
             outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(
                 matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]
             ) { [weak self] _ in
@@ -88,18 +89,23 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
     func closePopover(_ sender: Any?) {
         popover?.performClose(sender)
-
-        if let monitor = outsideClickMonitor {
-            NSEvent.removeMonitor(monitor)
-            outsideClickMonitor = nil
-        }
+        removeOutsideClickMonitor()
     }
 
+    /// Also reached through the delegate, so a popover dismissed by any other
+    /// route does not leave the monitor running.
     func popoverDidClose(_ notification: Notification) {
-        if let monitor = outsideClickMonitor {
-            NSEvent.removeMonitor(monitor)
-            outsideClickMonitor = nil
-        }
+        removeOutsideClickMonitor()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        removeOutsideClickMonitor()
+    }
+
+    private func removeOutsideClickMonitor() {
+        guard let monitor = outsideClickMonitor else { return }
+        NSEvent.removeMonitor(monitor)
+        outsideClickMonitor = nil
     }
 
     @objc func updateStatusBarView() {
@@ -122,6 +128,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
 
 @MainActor
 func runSnapshotMode(outputDir: String) {
+    AppState.isSnapshotting = true
+
     let fileManager = FileManager.default
 
     // Create output directory if it doesn't exist
@@ -161,25 +169,9 @@ func runSnapshotMode(outputDir: String) {
         hasError = true
     }
 
-    // The panes, not the whole settings window: NavigationSplitView is
-    // AppKit-backed and comes out of the renderer as a placeholder block.
-    let historyView = HistorySectionView(appState: appState)
-        .frame(width: 720, height: 720)
-
-    if let historyPath = renderViewToFile(historyView, scale: 2.0, name: "history", outputDir: outputDir) {
-        savedFiles.append(historyPath)
-    } else {
-        hasError = true
-    }
-
-    let notificationsView = NotificationsSectionView(appState: appState)
-        .frame(width: 720, height: 620)
-
-    if let notificationsPath = renderViewToFile(notificationsView, scale: 2.0, name: "notifications", outputDir: outputDir) {
-        savedFiles.append(notificationsPath)
-    } else {
-        hasError = true
-    }
+    // Only the popover: ImageRenderer will not draw NavigationSplitView, a
+    // segmented Picker or ScrollView content, and rendering them anyway left
+    // junk PNGs full of live spend numbers next to the real one.
 
     if hasError {
         exit(1)
