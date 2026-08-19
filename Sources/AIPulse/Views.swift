@@ -1513,7 +1513,7 @@ struct NotificationsSectionView: View {
 
                 Button(action: {
                     let watcher = ServiceWatcher()
-                    watcher.sendTestNotification(language: language)
+                    watcher.sendTestNotification(data: appState.data, config: appState.config ?? Config())
                 }) {
                     HStack {
                         Image(systemName: "bell.badge")

@@ -119,15 +119,16 @@ announced, so installing does not set off an avalanche. The check runs whenever
 the app reloads its data, which is every 60 seconds; the data itself is at most
 as fresh as the last collection.
 
-**Alerts arrive as "Script Editor", not as AIPulse.** macOS only hands
-`UNUserNotificationCenter` to apps signed with a real Developer ID - an ad-hoc
-signature is refused outright with *"Notifications are not allowed for this
-application"*, even from `/Applications`. Delivery therefore goes through
-`osascript`, which needs no signature and no entitlement, at the cost of the
-alerts being attributed to Script Editor in System Settings → Notifications.
-Turning individual alerts off is done in the app, not there. Signing the bundle
-with a Developer ID certificate and switching the delivery call is all it would
-take to change this.
+The **Send a test alert** button shows both shapes back to back - an outage and
+the recovery that follows it - on whichever service you enabled first, so you can
+see what will actually arrive without waiting for something to break.
+
+Alerts are posted with AppleScript run inside the app rather than by shelling out
+to `osascript`, so macOS credits them to this bundle and shows its icon.
+`UNUserNotificationCenter` is not an option here: it is reserved for apps signed
+with a real Developer ID and refuses an ad-hoc signature outright with
+*"Notifications are not allowed for this application"*, even from
+`/Applications`.
 
 ## Configuration
 

@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 
 class ServiceWatcher {
     private let stateFilePath: URL
@@ -59,55 +60,74 @@ class ServiceWatcher {
         }
     }
 
-    func sendTestNotification(language: String) {
-        let body = L.t("notifications.test_body", language)
-        sendNotificationViaOsascript(title: "AIPulse", subtitle: "", body: body)
+    /// Shows both shapes a real alert can take, on whichever service the user
+    /// picked first - a sample that says nothing about a service would not tell
+    /// them what an actual outage looks like.
+    func sendTestNotification(data: UsageData?, config: Config) {
+        let language = config.language
+        let name = sampleComponentName(data: data, config: config)
+            ?? L.t("notifications.test_service", language)
+
+        send(headlineKey: "notifications.down_title", componentName: name,
+             status: "major_outage", language: language)
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+            self?.send(headlineKey: "notifications.up_title", componentName: name,
+                       status: "operational", language: language)
+        }
+    }
+
+    private func sampleComponentName(data: UsageData?, config: Config) -> String? {
+        guard let data = data else { return nil }
+        let all = (data.services.anthropic.components ?? []).map { ("anthropic:\($0.id)", $0) }
+            + (data.services.openai.components ?? []).map { ("openai:\($0.id)", $0) }
+        if let picked = all.first(where: { config.notifyServices.contains($0.0) }) {
+            return picked.1.name
+        }
+        return all.first?.1.name
     }
 
     private func sendNotification(componentName: String, fromStatus: String, toStatus: String, language: String) {
-        let isRecovering = toStatus == "operational"
-        let titleKey = isRecovering ? "notifications.up_title" : "notifications.down_title"
-        let headline = String(format: L.t(titleKey, language), componentName as NSString)
+        let key = toStatus == "operational" ? "notifications.up_title" : "notifications.down_title"
+        send(headlineKey: key, componentName: componentName, status: toStatus, language: language)
+    }
+
+    private func send(headlineKey: String, componentName: String, status: String, language: String) {
+        let headline = String(format: L.t(headlineKey, language), componentName as NSString)
 
         // The status itself is the useful part, so it goes in the body: a partial
         // outage and a full one are worth telling apart at a glance.
-        let statusKey = "status.\(toStatus)"
+        let statusKey = "status.\(status)"
         var statusText = L.t(statusKey, language)
         if statusText == statusKey {
             statusText = L.t("status.unknown", language)
         }
 
-        sendNotificationViaOsascript(title: "AIPulse", subtitle: headline, body: statusText)
+        deliver(title: "AIPulse", subtitle: headline, body: statusText)
     }
 
-    private func sendNotificationViaOsascript(title: String, subtitle: String, body: String) {
-        let escapedBody = escapeApplescript(body)
-        let escapedSubtitle = escapeApplescript(subtitle)
-
-        var script = "display notification \"\(escapedBody)\" with title \"\(escapeApplescript(title))\""
+    /// Runs the AppleScript in-process instead of shelling out to osascript, so
+    /// macOS credits the alert to this bundle and shows its icon rather than
+    /// whatever binary ran the script. Must stay on the main thread.
+    private func deliver(title: String, subtitle: String, body: String) {
+        var script = "display notification \"\(escapeApplescript(body))\""
+        script += " with title \"\(escapeApplescript(title))\""
         if !subtitle.isEmpty {
-            script += " subtitle \"\(escapedSubtitle)\""
+            script += " subtitle \"\(escapeApplescript(subtitle))\""
         }
 
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-        process.arguments = ["-e", script]
-
-        let errorPipe = Pipe()
-        process.standardError = errorPipe
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-
-            if process.terminationStatus != 0 {
-                let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-                if let errorText = String(data: errorData, encoding: .utf8), !errorText.isEmpty {
-                    fputs("osascript error: \(errorText)", stderr)
-                }
+        let run = {
+            var error: NSDictionary?
+            NSAppleScript(source: script)?.executeAndReturnError(&error)
+            if let error = error {
+                fputs("notification failed: \(error)\n", stderr)
             }
-        } catch {
-            fputs("Failed to run osascript: \(error)\n", stderr)
+        }
+
+        if Thread.isMainThread {
+            run()
+        } else {
+            DispatchQueue.main.async(execute: run)
         }
     }
 
