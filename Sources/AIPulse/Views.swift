@@ -78,7 +78,7 @@ struct HeaderView: View {
             return
         }
         let settingsWindow = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 700, height: 500),
+            contentRect: NSRect(x: 0, y: 0, width: 780, height: 620),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
@@ -87,6 +87,7 @@ struct HeaderView: View {
         let language = appState.config?.language ?? "cs"
         settingsWindow.title = L.t("settings.title", language)
         settingsWindow.isReleasedWhenClosed = false
+        settingsWindow.minSize = NSSize(width: 760, height: 600)
         let hostingView = NSHostingController(rootView: SettingsView(appState: appState))
         settingsWindow.contentViewController = hostingView
         SettingsWindowHolder.shared.window = settingsWindow
@@ -628,6 +629,7 @@ struct SettingsView: View {
                 Label(L.t("settings.notifications", language), systemImage: "bell").tag("notifications")
             }
             .listStyle(.sidebar)
+            .navigationSplitViewColumnWidth(min: 170, ideal: 185, max: 220)
         } detail: {
             switch selectedTab {
             case "login":
@@ -644,8 +646,22 @@ struct SettingsView: View {
                 Text(L.t("settings.general_title", language))
             }
         }
-        .navigationTitle(L.t("settings.general_title", language))
-        .frame(minWidth: 700, minHeight: 500)
+        .navigationTitle(sectionTitle(language))
+        .toolbar(removing: .sidebarToggle)
+        .frame(minWidth: 760, minHeight: 600)
+    }
+
+    /// The window title is the only place the open section is named, so it has to
+    /// follow the selection - it used to say "General" whatever was open.
+    private func sectionTitle(_ language: String) -> String {
+        switch selectedTab {
+        case "login": return L.t("settings.login", language)
+        case "general": return L.t("settings.section.general", language)
+        case "language": return L.t("settings.language", language)
+        case "history": return L.t("settings.history", language)
+        case "notifications": return L.t("settings.notifications", language)
+        default: return L.t("settings.title", language)
+        }
     }
 }
 
@@ -676,9 +692,6 @@ struct LoginSectionView: View {
             : appState.data?.auth.codex
 
         return VStack(alignment: .leading, spacing: 16) {
-            Text(L.t("login.title", language))
-                .font(.system(size: 14, weight: .semibold))
-
             VStack(alignment: .leading, spacing: 8) {
                 Text(L.t("login.provider_label", language))
                     .font(.system(size: 11))
@@ -864,60 +877,137 @@ struct LoginSectionView: View {
 struct HistorySectionView: View {
     @ObservedObject var appState: AppState
 
+    private struct HistoryRow: Identifiable {
+        let id: String
+        let label: String
+        let tokens: Int
+        let cost: Double
+    }
+
     var selectedPeriod: String {
         appState.config?.historyPeriod ?? "week"
     }
 
-    var historyData: [Any] {
+    private var rows: [HistoryRow] {
         let period = selectedPeriod
-        if period == "day", let claude = appState.data?.claude, let daily = claude.dailyData {
-            return Array(daily.suffix(30))
-        } else if period == "month", let monthly = appState.data?.aggregations.monthlyHistory {
-            return monthly
+
+        if period == "day", let claude = appState.data?.claude, let dailyData = claude.dailyData {
+            let sorted = dailyData.sorted { (a, b) in
+                guard let ap = a.period, let bp = b.period, let aDate = parseISO(ap), let bDate = parseISO(bp) else { return false }
+                return aDate < bDate
+            }
+            let recent = Array(sorted.suffix(30))
+            return recent.map { item in
+                HistoryRow(
+                    id: item.period ?? "",
+                    label: appState.getDayLabel(item.period ?? ""),
+                    tokens: item.totalTokens,
+                    cost: item.totalCost
+                )
+            }
+        } else if period == "month", let monthlyData = appState.data?.aggregations.monthlyHistory {
+            let sorted = monthlyData.sorted { $0.month < $1.month }
+            return sorted.map { item in
+                HistoryRow(
+                    id: item.month,
+                    label: appState.formatMonthLabel(item.month),
+                    tokens: item.tokens,
+                    cost: item.cost
+                )
+            }
         } else {
-            return appState.data?.aggregations.weeklyHistory ?? []
+            let weeklyData = appState.data?.aggregations.weeklyHistory ?? []
+            let sorted = weeklyData.sorted { $0.week < $1.week }
+            let recent = Array(sorted.suffix(12))
+            return recent.map { item in
+                HistoryRow(
+                    id: item.week,
+                    label: String(item.week.split(separator: "-").last ?? ""),
+                    tokens: item.tokens,
+                    cost: item.cost
+                )
+            }
         }
     }
 
     var body: some View {
         let language = appState.config?.language ?? "cs"
         return VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 12) {
-                Text(L.t("history.title", language))
-                    .font(.system(size: 14, weight: .semibold))
-                Spacer()
-                HStack(spacing: 4) {
-                    ForEach(["day", "week", "month"], id: \.self) { period in
-                        let label = period == "day" ? L.t("history.period_days", language) : (period == "week" ? L.t("history.period_weeks", language) : L.t("history.period_months", language))
-                        Button(label) {
-                            if var config = appState.config {
-                                config.historyPeriod = period
-                                appState.saveConfig(config)
+            if let data = appState.data {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(L.t("history.all_time", language))
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.secondary)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 8) {
+                            Text(L.t("login.provider_claude", language))
+                                .font(.system(size: 11))
+                            Spacer()
+                            Text(appState.formatTokens(data.claude.totals.totalTokens))
+                                .font(.system(size: 11, design: .monospaced))
+                            Text("·")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                            Text(appState.formatCostInDollars(data.claude.totals.totalCost))
+                                .font(.system(size: 11, design: .monospaced))
+                        }
+
+                        if data.codex.totals.totalTokens > 0 {
+                            HStack(spacing: 8) {
+                                Text(L.t("login.provider_codex", language))
+                                    .font(.system(size: 11))
+                                Spacer()
+                                Text(appState.formatTokens(data.codex.totals.totalTokens))
+                                    .font(.system(size: 11, design: .monospaced))
+                                Text("·")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                                Text(appState.formatCostInDollars(data.codex.totals.totalCost))
+                                    .font(.system(size: 11, design: .monospaced))
                             }
-                                                    }
-                        .font(.system(size: 11, weight: selectedPeriod == period ? .semibold : .regular))
-                        .foregroundColor(selectedPeriod == period ? .white : .primary)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 4)
-                        .background(selectedPeriod == period ? Color.blue : Color.gray.opacity(0.2))
-                        .cornerRadius(4)
+                        }
                     }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Color.primary.opacity(0.06))
+                    )
                 }
             }
 
-            if !historyData.isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
-                    if selectedPeriod == "day" {
-                        renderDayChart()
-                    } else if selectedPeriod == "month" {
-                        renderMonthChart()
-                    } else {
-                        renderWeekChart()
+            VStack(alignment: .leading, spacing: 12) {
+                Picker("", selection: Binding(
+                    get: { selectedPeriod },
+                    set: { newValue in
+                        if var config = appState.config {
+                            config.historyPeriod = newValue
+                            appState.saveConfig(config)
+                        }
                     }
+                )) {
+                    Text(L.t("history.period_days", language)).tag("day")
+                    Text(L.t("history.period_weeks", language)).tag("week")
+                    Text(L.t("history.period_months", language)).tag("month")
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+            }
 
-                    Divider()
+            if !rows.isEmpty {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        renderChart()
 
-                    renderTable()
+                        Divider()
+
+                        renderSummary()
+
+                        Divider()
+
+                        renderTable()
+                    }
                 }
             } else {
                 Text(L.t("history.no_data", language))
@@ -931,32 +1021,53 @@ struct HistorySectionView: View {
     }
 
     @ViewBuilder
-    private func renderDayChart() -> some View {
+    private func renderChart() -> some View {
         let language = appState.config?.language ?? "cs"
-        if let days = historyData as? [PeriodRow] {
-            let sortedDays = Array(days.sorted { (a, b) in
-                guard let ap = a.period, let bp = b.period, let aDate = parseISO(ap), let bDate = parseISO(bp) else { return false }
-                return aDate < bDate
-            }.suffix(30))
 
-            Chart {
-                ForEach(sortedDays, id: \.period) { item in
-                    BarMark(
-                        x: .value(L.t("history.day_header", language), appState.getDayLabel(item.period ?? "")),
-                        y: .value(L.t("history.tokens_header", language), item.totalTokens)
-                    )
-                    .foregroundStyle(Color.blue.opacity(0.7))
+        Chart {
+            ForEach(rows, id: \.id) { item in
+                BarMark(
+                    x: .value(L.t("history.day_header", language), item.label),
+                    y: .value(L.t("history.tokens_header", language), item.tokens)
+                )
+                .foregroundStyle(Color.blue.opacity(0.7))
+            }
+        }
+        .frame(height: 200)
+        .chartYAxis {
+            AxisMarks(position: .leading, values: .automatic(desiredCount: 5)) { value in
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                    .foregroundStyle(Color.gray.opacity(0.2))
+                AxisTick(length: 4)
+                if let intValue = value.as(Int.self) {
+                    AxisValueLabel {
+                        Text(appState.formatYAxisLabel(intValue))
+                            .font(.system(size: 9))
+                    }
                 }
             }
-            .frame(height: 200)
-            .chartYAxis {
-                AxisMarks(position: .leading, values: .automatic(desiredCount: 5)) { value in
+        }
+        .chartXAxis {
+            if selectedPeriod == "day" {
+                AxisMarks(values: .automatic(desiredCount: Int(Double(rows.count) / 5.0))) { value in
                     AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
                         .foregroundStyle(Color.gray.opacity(0.2))
                     AxisTick(length: 4)
-                    if let intValue = value.as(Int.self) {
+                    if let label = value.as(String.self) {
                         AxisValueLabel {
-                            Text(appState.formatYAxisLabel(intValue))
+                            Text(label)
+                                .font(.system(size: 9))
+                        }
+                    }
+                }
+            } else {
+                AxisMarks { value in
+                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                        .foregroundStyle(Color.gray.opacity(0.2))
+                    AxisTick(length: 4)
+                    if let label = value.as(String.self) {
+                        AxisValueLabel {
+                            Text(label)
                                 .font(.system(size: 9))
                         }
                     }
@@ -966,131 +1077,71 @@ struct HistorySectionView: View {
     }
 
     @ViewBuilder
-    private func renderWeekChart() -> some View {
+    private func renderSummary() -> some View {
+        let totalTokens = rows.map { $0.tokens }.reduce(0, +)
+        let totalCost = rows.map { $0.cost }.reduce(0, +)
         let language = appState.config?.language ?? "cs"
-        if let weeks = historyData as? [WeekData] {
-            let sortedWeeks = Array(weeks.reversed().prefix(12))
 
-            Chart {
-                ForEach(sortedWeeks, id: \.week) { item in
-                    BarMark(
-                        x: .value(L.t("history.week_header", language), String(item.week.split(separator: "-").last ?? "")),
-                        y: .value(L.t("history.tokens_header", language), item.tokens)
-                    )
-                    .foregroundStyle(Color.blue.opacity(0.7))
-                }
-            }
-            .frame(height: 200)
-            .chartYAxis {
-                AxisMarks(position: .leading, values: .automatic(desiredCount: 5)) { value in
-                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                        .foregroundStyle(Color.gray.opacity(0.2))
-                    AxisTick(length: 4)
-                    if let intValue = value.as(Int.self) {
-                        AxisValueLabel {
-                            Text(appState.formatYAxisLabel(intValue))
-                                .font(.system(size: 9))
-                        }
-                    }
-                }
-            }
+        HStack {
+            Text(L.t("history.total", language))
+                .font(.system(size: 11, weight: .semibold))
+            Spacer(minLength: 8)
+            Text(appState.formatTokens(totalTokens))
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+            Spacer(minLength: 8)
+            Text(appState.formatCostInDollars(totalCost))
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .frame(width: 80, alignment: .trailing)
         }
-    }
-
-    @ViewBuilder
-    private func renderMonthChart() -> some View {
-        let language = appState.config?.language ?? "cs"
-        if let months = historyData as? [MonthData] {
-            Chart {
-                ForEach(months, id: \.month) { item in
-                    BarMark(
-                        x: .value(L.t("history.month_header", language), appState.formatMonthLabel(item.month)),
-                        y: .value(L.t("history.tokens_header", language), item.tokens)
-                    )
-                    .foregroundStyle(Color.blue.opacity(0.7))
-                }
-            }
-            .frame(height: 200)
-            .chartYAxis {
-                AxisMarks(position: .leading, values: .automatic(desiredCount: 5)) { value in
-                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                        .foregroundStyle(Color.gray.opacity(0.2))
-                    AxisTick(length: 4)
-                    if let intValue = value.as(Int.self) {
-                        AxisValueLabel {
-                            Text(appState.formatYAxisLabel(intValue))
-                                .font(.system(size: 9))
-                        }
-                    }
-                }
-            }
-        }
+        .padding(.vertical, 3)
+        .padding(.horizontal, 6)
     }
 
     @ViewBuilder
     private func renderTable() -> some View {
         let language = appState.config?.language ?? "cs"
-        VStack(alignment: .leading, spacing: 8) {
-            let period = selectedPeriod
+
+        VStack(alignment: .leading, spacing: 0) {
             HStack {
-                if period == "day" {
+                if selectedPeriod == "day" {
                     Text(L.t("history.day_header", language)).font(.system(size: 11, weight: .semibold))
-                } else if period == "month" {
+                        .frame(width: 90, alignment: .leading)
+                } else if selectedPeriod == "month" {
                     Text(L.t("history.month_header", language)).font(.system(size: 11, weight: .semibold))
+                        .frame(width: 90, alignment: .leading)
                 } else {
                     Text(L.t("history.week_header", language)).font(.system(size: 11, weight: .semibold))
+                        .frame(width: 90, alignment: .leading)
                 }
-                Spacer()
+
+                Spacer(minLength: 8)
                 Text(L.t("history.tokens_header", language)).font(.system(size: 11, weight: .semibold))
-                Spacer()
+                    .frame(width: 80, alignment: .trailing)
+                Spacer(minLength: 8)
                 Text(L.t("history.price_header", language)).font(.system(size: 11, weight: .semibold))
-                    .frame(width: 70, alignment: .trailing)
+                    .frame(width: 80, alignment: .trailing)
             }
             .padding(.bottom, 4)
 
-            if let days = historyData as? [PeriodRow] {
-                let locale = language == "en" ? Locale(identifier: "en_US") : Locale(identifier: "cs_CZ")
-                ForEach(Array(days.suffix(30).reversed()), id: \.period) { item in
-                    HStack {
-                        Text(appState.getDayLabel(item.period ?? ""))
-                            .font(.system(size: 10))
-                        Spacer()
-                        Text(String(format: "%.0f M", locale: locale, Double(item.totalTokens) / 1_000_000))
-                            .font(.system(size: 10, design: .monospaced))
-                        Spacer()
-                        Text(appState.formatCostInDollars(item.totalCost))
-                            .font(.system(size: 10, design: .monospaced))
-                            .frame(width: 70, alignment: .trailing)
-                    }
+            ForEach(Array(rows.reversed().enumerated()), id: \.element.id) { index, item in
+                HStack {
+                    Text(item.label)
+                        .font(.system(size: 10))
+                        .frame(width: 90, alignment: .leading)
+
+                    Spacer(minLength: 8)
+                    Text(appState.formatTokens(item.tokens))
+                        .font(.system(size: 10, design: .monospaced))
+                        .frame(width: 80, alignment: .trailing)
+
+                    Spacer(minLength: 8)
+                    Text(appState.formatCostInDollars(item.cost))
+                        .font(.system(size: 10, design: .monospaced))
+                        .frame(width: 80, alignment: .trailing)
                 }
-            } else if let weeks = historyData as? [WeekData] {
-                let locale = language == "en" ? Locale(identifier: "en_US") : Locale(identifier: "cs_CZ")
-                ForEach(Array(weeks.reversed().prefix(12)), id: \.week) { item in
-                    HStack {
-                        Text(String(item.week.split(separator: "-").last ?? "")).font(.system(size: 10))
-                        Spacer()
-                        Text(String(format: "%.0f M", locale: locale, Double(item.tokens) / 1_000_000))
-                            .font(.system(size: 10, design: .monospaced))
-                        Spacer()
-                        Text(appState.formatCostInDollars(item.cost))
-                            .font(.system(size: 10, design: .monospaced))
-                            .frame(width: 70, alignment: .trailing)
-                    }
-                }
-            } else if let months = historyData as? [MonthData] {
-                let locale = language == "en" ? Locale(identifier: "en_US") : Locale(identifier: "cs_CZ")
-                ForEach(months, id: \.month) { item in
-                    HStack {
-                        Text(appState.formatMonthLabel(item.month)).font(.system(size: 10))
-                        Spacer()
-                        Text(String(format: "%.0f M", locale: locale, Double(item.tokens) / 1_000_000))
-                            .font(.system(size: 10, design: .monospaced))
-                        Spacer()
-                        Text(appState.formatCostInDollars(item.cost))
-                            .font(.system(size: 10, design: .monospaced))
-                            .frame(width: 70, alignment: .trailing)
-                    }
-                }
+                .padding(.vertical, 3)
+                .padding(.horizontal, 6)
+                .background(index % 2 == 0 ? Color.primary.opacity(0.04) : Color.clear)
             }
         }
     }
@@ -1396,9 +1447,6 @@ struct LanguageSectionView: View {
         let currentLanguage = appState.config?.language ?? "cs"
 
         return VStack(alignment: .leading, spacing: 16) {
-            Text(L.t("language.title", language))
-                .font(.system(size: 14, weight: .semibold))
-
             VStack(spacing: 6) {
                 languageRow(flag: "🇨🇿", label: "Čeština", isSelected: currentLanguage == "cs") {
                     select("cs")

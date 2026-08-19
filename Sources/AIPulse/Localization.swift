@@ -85,8 +85,6 @@ enum L {
             "settings.group.appearance": "Styl",
             "settings.group.behavior": "Chování",
             "settings.group.actions": "Akce",
-
-            "login.title": "Přihlášení",
             "login.provider_label": "Aktivní nástroj",
             "login.provider_claude": "Claude",
             "login.provider_codex": "Codex",
@@ -103,8 +101,6 @@ enum L {
             "login.codex_account": "Účet",
             "login.in_progress": "Přihlašuji v prohlížeči…",
             "login.timed_out": "Přihlášení se nedokončilo",
-
-            "history.title": "Historie",
             "history.period_days": "Dny",
             "history.period_weeks": "Týdny",
             "history.period_months": "Měsíce",
@@ -114,6 +110,8 @@ enum L {
             "history.month_header": "Měsíc",
             "history.tokens_header": "Tokeny",
             "history.price_header": "Cena",
+            "history.total": "Celkem",
+            "history.all_time": "Od začátku",
 
             "bar_appearance.title": "Vzhled lišty",
             "bar_appearance.style_label": "Styl",
@@ -133,8 +131,6 @@ enum L {
             "bar_appearance.color_50_74": "50 až 74 % — žlutá",
             "bar_appearance.color_75_89": "75 až 89 % — oranžová",
             "bar_appearance.color_over_90": "90 % a víc — červená",
-
-            "language.title": "Jazyk",
             "language.interface_language": "Jazyk rozhraní",
 
             "general.startup": "Spouštět po přihlášení",
@@ -256,8 +252,6 @@ enum L {
             "settings.group.appearance": "Style",
             "settings.group.behavior": "Behavior",
             "settings.group.actions": "Actions",
-
-            "login.title": "Login",
             "login.provider_label": "Active tool",
             "login.provider_claude": "Claude",
             "login.provider_codex": "Codex",
@@ -274,8 +268,6 @@ enum L {
             "login.codex_account": "Account",
             "login.in_progress": "Signing in through the browser…",
             "login.timed_out": "The sign-in did not complete",
-
-            "history.title": "History",
             "history.period_days": "Days",
             "history.period_weeks": "Weeks",
             "history.period_months": "Months",
@@ -285,6 +277,8 @@ enum L {
             "history.month_header": "Month",
             "history.tokens_header": "Tokens",
             "history.price_header": "Price",
+            "history.total": "Total",
+            "history.all_time": "All time",
 
             "bar_appearance.title": "Bar Appearance",
             "bar_appearance.style_label": "Style",
@@ -304,8 +298,6 @@ enum L {
             "bar_appearance.color_50_74": "50 to 74% — yellow",
             "bar_appearance.color_75_89": "75 to 89% — orange",
             "bar_appearance.color_over_90": "90% and above — red",
-
-            "language.title": "Language",
             "language.interface_language": "Interface language",
 
             "general.startup": "Launch on login",
