@@ -312,22 +312,32 @@ struct LimitRowView: View {
                     .foregroundColor(Color(color))
             }
 
-            ZStack(alignment: .leading) {
-                ProgressView(value: CGFloat(percent) / 100)
-                    .tint(Color(color))
+            // Drawn rather than a ProgressView: the AppKit-backed control renders
+            // as a yellow "unavailable" block here, both on screen and offscreen.
+            GeometryReader { geo in
+                let fraction = max(0, min(1, CGFloat(percent) / 100))
 
-                if showDayMarkers && workDays > 1 {
-                    GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.primary.opacity(0.15))
+                        .frame(height: 6)
+
+                    Capsule()
+                        .fill(Color(color))
+                        .frame(width: geo.size.width * fraction, height: 6)
+
+                    if showDayMarkers && workDays > 1 {
                         ForEach(1..<workDays, id: \.self) { day in
                             Rectangle()
                                 .fill(Color.primary.opacity(0.35))
                                 .frame(width: 1, height: 6)
-                                .offset(x: geo.size.width * CGFloat(day) / CGFloat(workDays), y: 1)
+                                .offset(x: geo.size.width * CGFloat(day) / CGFloat(workDays))
                         }
                     }
-                    .frame(height: 8)
                 }
+                .frame(height: 6)
             }
+            .frame(height: 6)
 
             Text(resetsAt.map { resetTimeString(from: $0) } ?? "")
                 .font(.system(size: 9))
@@ -611,7 +621,12 @@ struct ErrorView: View {
 
 struct SettingsView: View {
     @ObservedObject var appState: AppState
-    @State private var selectedTab: String = "login"
+    @State private var selectedTab: String
+
+    init(appState: AppState, initialTab: String = "login") {
+        self.appState = appState
+        _selectedTab = State(initialValue: initialTab)
+    }
 
     var body: some View {
         let language = appState.config?.language ?? "cs"

@@ -44,6 +44,22 @@ L.t("error.data_load_failed", language)
 
 Strings are defined in `Localization.swift` as `[String: String]` dictionaries for each language (`cs` and `en`). Add both languages when adding a new key.
 
+## Screenshots
+
+`docs/popover.png` is produced by the app itself, not captured from the screen:
+
+```bash
+/Applications/AIPulse.app/Contents/MacOS/AIPulse --snapshot docs
+```
+
+It renders the popover offscreen at 2x with `ImageRenderer` and exits. Regenerate
+it whenever the popover changes rather than taking a new screenshot by hand.
+
+Only the popover can be rendered this way. `ImageRenderer` refuses anything
+AppKit-backed - `NavigationSplitView`, a segmented `Picker`, `ProgressView`,
+`ScrollView` content - and draws a yellow placeholder block instead, so the
+settings panes have to be captured with a real screen capture.
+
 ## Runtime Data
 
 These files are generated at runtime and must never be committed:

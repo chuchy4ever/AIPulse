@@ -8,6 +8,10 @@ AIPulse is a lightweight menu bar application that tracks your spending and quot
 
 AIPulse reads your local agent logs and your own account quota. It runs entirely on your machine and sends nothing to third parties.
 
+<p align="center">
+  <img src="docs/popover.png" alt="The AIPulse popover: weekly gauge, session and weekly limits, per-day usage and a model breakdown" width="376">
+</p>
+
 ## Features
 
 - **Real-time usage tracking** — displays current consumption from Claude Code and Codex
