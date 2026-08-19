@@ -1457,6 +1457,17 @@ struct LanguageSectionView: View {
 
 struct NotificationsSectionView: View {
     @ObservedObject var appState: AppState
+    @State private var selectedProvider: String = "anthropic"
+
+    var anthropicEnabledCount: Int {
+        guard let config = appState.config else { return 0 }
+        return config.notifyServices.filter { $0.hasPrefix("anthropic:") }.count
+    }
+
+    var openaiEnabledCount: Int {
+        guard let config = appState.config else { return 0 }
+        return config.notifyServices.filter { $0.hasPrefix("openai:") }.count
+    }
 
     var body: some View {
         let language = appState.config?.language ?? "cs"
@@ -1473,54 +1484,61 @@ struct NotificationsSectionView: View {
             }
 
             if let data = appState.data, hasAnthropicComponents || hasOpenAIComponents {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        // Anthropic section
-                        if let components = data.services.anthropic.components, !components.isEmpty {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text(L.t("notifications.provider_anthropic", language))
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundColor(.secondary)
+                VStack(alignment: .leading, spacing: 12) {
+                    Picker("", selection: $selectedProvider) {
+                        Text(providerLabel("anthropic", language, anthropicEnabledCount))
+                            .tag("anthropic")
+                        Text(providerLabel("openai", language, openaiEnabledCount))
+                            .tag("openai")
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
 
-                                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 8) {
+                        Spacer()
+                        Button(action: { selectAllForProvider(selectedProvider, language: language) }) {
+                            Text(L.t("notifications.select_all", language))
+                                .font(.system(size: 10))
+                        }
+                        .buttonStyle(.link)
+
+                        Button(action: { clearAllForProvider(selectedProvider, language: language) }) {
+                            Text(L.t("notifications.select_none", language))
+                                .font(.system(size: 10))
+                        }
+                        .buttonStyle(.link)
+                    }
+
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 6) {
+                            if selectedProvider == "anthropic" {
+                                if let components = data.services.anthropic.components, !components.isEmpty {
                                     ForEach(components, id: \.id) { component in
                                         componentToggleRow(component: component, provider: "anthropic", appState: appState, language: language)
                                     }
+                                } else {
+                                    Text(L.t("notifications.empty", language))
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.secondary)
+                                        .padding(.vertical, 16)
                                 }
-                            }
-                        }
-
-                        // OpenAI section
-                        if let components = data.services.openai.components, !components.isEmpty {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text(L.t("notifications.provider_openai", language))
-                                    .font(.system(size: 11, weight: .semibold))
-                                    .foregroundColor(.secondary)
-
-                                VStack(alignment: .leading, spacing: 6) {
+                            } else {
+                                if let components = data.services.openai.components, !components.isEmpty {
                                     ForEach(components, id: \.id) { component in
                                         componentToggleRow(component: component, provider: "openai", appState: appState, language: language)
                                     }
+                                } else {
+                                    Text(L.t("notifications.empty", language))
+                                        .font(.system(size: 11))
+                                        .foregroundColor(.secondary)
+                                        .padding(.vertical, 16)
                                 }
                             }
                         }
+                        .padding(.vertical, 8)
                     }
-                    .padding(.vertical, 8)
+                    .frame(maxHeight: 300)
                 }
-                .frame(maxHeight: 300)
-
-                Divider()
-
-                Button(action: {
-                    let watcher = ServiceWatcher()
-                    watcher.sendTestNotification(data: appState.data, config: appState.config ?? Config())
-                }) {
-                    HStack {
-                        Image(systemName: "bell.badge")
-                        Text(L.t("notifications.test", language))
-                    }
-                }
-                .buttonStyle(.bordered)
             } else {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(L.t("notifications.empty", language))
@@ -1534,6 +1552,46 @@ struct NotificationsSectionView: View {
             Spacer()
         }
         .padding()
+        .onAppear {
+            if let provider = appState.config?.activeProvider {
+                selectedProvider = provider == "codex" ? "openai" : "anthropic"
+            }
+        }
+    }
+
+    private func providerLabel(_ provider: String, _ language: String, _ count: Int) -> String {
+        let key = provider == "anthropic" ? "login.provider_claude" : "login.provider_codex"
+        let name = L.t(key, language)
+        return count > 0 ? "\(name) (\(count))" : name
+    }
+
+    private func selectAllForProvider(_ provider: String, language: String) {
+        guard var config = appState.config else { return }
+        let components = provider == "anthropic"
+            ? appState.data?.services.anthropic.components ?? []
+            : appState.data?.services.openai.components ?? []
+
+        for component in components {
+            let key = "\(provider):\(component.id)"
+            if !config.notifyServices.contains(key) {
+                config.notifyServices.append(key)
+            }
+        }
+        appState.saveConfig(config)
+    }
+
+    private func clearAllForProvider(_ provider: String, language: String) {
+        guard var config = appState.config else { return }
+        config.notifyServices.removeAll { $0.hasPrefix("\(provider):") }
+        appState.saveConfig(config)
+    }
+
+    /// A status the status page invents later would otherwise render as the raw
+    /// key, which is worse than admitting it is unknown.
+    private func localizedStatus(_ status: String, _ language: String) -> String {
+        let key = "status.\(status)"
+        let text = L.t(key, language)
+        return text == key ? L.t("status.unknown", language) : text
     }
 
     @ViewBuilder
@@ -1563,15 +1621,16 @@ struct NotificationsSectionView: View {
                 .fill(statusColor)
                 .frame(width: 8, height: 8)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(component.name)
-                    .font(.system(size: 11))
-                Text(L.t("status.\(component.status)", language))
+            Text(component.name)
+                .font(.system(size: 11))
+
+            Spacer()
+
+            if component.status != "operational" {
+                Text(localizedStatus(component.status, language))
                     .font(.system(size: 9))
                     .foregroundColor(.secondary)
             }
-
-            Spacer()
         }
     }
 }

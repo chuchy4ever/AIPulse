@@ -108,20 +108,17 @@ paste either way. Both CLIs are located through a login shell, so an install in
 
 ## Outage alerts
 
-Settings → Notifications lists every component both status pages report - six for
-Anthropic, around twenty-five for OpenAI - each with a switch and a dot showing
-its current state. Nothing is selected by default, so no alerts are sent until
-you pick something.
+Settings → Notifications has a tab per provider and lists that provider's
+components - six for Claude, around twenty-five for Codex - each with a checkbox
+and a dot showing its current state, plus select-all and clear for the whole tab.
+A tab that has something enabled says so in its label. Nothing is selected by
+default, so no alerts are sent until you pick something.
 
 An alert goes out when a selected component leaves `operational`, and again when
 it comes back. A component seen for the first time is only recorded, never
 announced, so installing does not set off an avalanche. The check runs whenever
 the app reloads its data, which is every 60 seconds; the data itself is at most
 as fresh as the last collection.
-
-The **Send a test alert** button shows both shapes back to back - an outage and
-the recovery that follows it - on whichever service you enabled first, so you can
-see what will actually arrive without waiting for something to break.
 
 Alerts are posted with AppleScript run inside the app rather than by shelling out
 to `osascript`, so macOS credits them to this bundle and shows its icon.
