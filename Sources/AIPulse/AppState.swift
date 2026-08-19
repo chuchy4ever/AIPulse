@@ -192,6 +192,30 @@ class AppState: ObservableObject {
         return month
     }
 
+    /// Long forms for the history table, where a column of "srp 26" says less
+    /// than it costs in width. The chart keeps the short ones - it has no room.
+    func formatMonthLabelLong(_ month: String) -> String {
+        let lang = config?.language ?? "cs"
+        let components = month.split(separator: "-").map(String.init)
+        if components.count == 2, let monthNum = components.last, let year = components.first {
+            let key = "month.full." + monthNum
+            let name = L.t(key, lang)
+            if name != key {
+                return "\(name) \(year)"
+            }
+        }
+        return formatMonthLabel(month)
+    }
+
+    func getDayLabelLong(_ date: String) -> String {
+        guard let isoDate = parseISO(date) else { return date }
+        let lang = config?.language ?? "cs"
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: lang == "en" ? "en_US" : "cs_CZ")
+        formatter.dateFormat = lang == "en" ? "MMM d, yyyy" : "d. M. yyyy"
+        return formatter.string(from: isoDate)
+    }
+
     func getDayLabel(_ date: String) -> String {
         if let isoDate = parseISO(date) {
             let lang = config?.language ?? "cs"

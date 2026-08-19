@@ -879,9 +879,13 @@ struct HistorySectionView: View {
 
     private struct HistoryRow: Identifiable {
         let id: String
+        /// Short form for the chart axis; the table uses the spelled-out one.
         let label: String
+        let tableLabel: String
         let tokens: Int
         let cost: Double
+        let sent: Int
+        let received: Int
     }
 
     var selectedPeriod: String {
@@ -901,8 +905,11 @@ struct HistorySectionView: View {
                 HistoryRow(
                     id: item.period ?? "",
                     label: appState.getDayLabel(item.period ?? ""),
+                    tableLabel: appState.getDayLabelLong(item.period ?? ""),
                     tokens: item.totalTokens,
-                    cost: item.totalCost
+                    cost: item.totalCost,
+                    sent: item.sentTokens,
+                    received: item.receivedTokens
                 )
             }
         } else if period == "month", let monthlyData = appState.data?.aggregations.monthlyHistory {
@@ -911,20 +918,30 @@ struct HistorySectionView: View {
                 HistoryRow(
                     id: item.month,
                     label: appState.formatMonthLabel(item.month),
+                    tableLabel: appState.formatMonthLabelLong(item.month),
                     tokens: item.tokens,
-                    cost: item.cost
+                    cost: item.cost,
+                    sent: item.sentTokens,
+                    received: item.receivedTokens
                 )
             }
         } else {
             let weeklyData = appState.data?.aggregations.weeklyHistory ?? []
             let sorted = weeklyData.sorted { $0.week < $1.week }
             let recent = Array(sorted.suffix(12))
-            return recent.map { item in
-                HistoryRow(
+            return recent.map { item -> HistoryRow in
+                let parts = item.week.split(separator: "-").map(String.init)
+                let number = parts.last?.replacingOccurrences(of: "W", with: "") ?? ""
+                let year = parts.first ?? ""
+                return HistoryRow(
                     id: item.week,
                     label: String(item.week.split(separator: "-").last ?? ""),
+                    tableLabel: String(format: L.t("history.week_label", appState.config?.language ?? "cs"),
+                                       number as NSString, year as NSString),
                     tokens: item.tokens,
-                    cost: item.cost
+                    cost: item.cost,
+                    sent: item.sentTokens,
+                    received: item.receivedTokens
                 )
             }
         }
@@ -1080,18 +1097,27 @@ struct HistorySectionView: View {
     private func renderSummary() -> some View {
         let totalTokens = rows.map { $0.tokens }.reduce(0, +)
         let totalCost = rows.map { $0.cost }.reduce(0, +)
+        let totalSent = rows.map { $0.sent }.reduce(0, +)
+        let totalReceived = rows.map { $0.received }.reduce(0, +)
         let language = appState.config?.language ?? "cs"
 
         HStack {
             Text(L.t("history.total", language))
                 .font(.system(size: 11, weight: .semibold))
             Spacer(minLength: 8)
+            Text(appState.formatTokens(totalSent))
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .frame(width: 75, alignment: .trailing)
+            Text(appState.formatTokens(totalReceived))
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .frame(width: 75, alignment: .trailing)
             Text(appState.formatTokens(totalTokens))
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .frame(width: 75, alignment: .trailing)
             Spacer(minLength: 8)
             Text(appState.formatCostInDollars(totalCost))
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .frame(width: 80, alignment: .trailing)
+                .frame(width: 75, alignment: .trailing)
         }
         .padding(.vertical, 3)
         .padding(.horizontal, 6)
@@ -1105,39 +1131,51 @@ struct HistorySectionView: View {
             HStack {
                 if selectedPeriod == "day" {
                     Text(L.t("history.day_header", language)).font(.system(size: 11, weight: .semibold))
-                        .frame(width: 90, alignment: .leading)
+                        .frame(width: 130, alignment: .leading)
                 } else if selectedPeriod == "month" {
                     Text(L.t("history.month_header", language)).font(.system(size: 11, weight: .semibold))
-                        .frame(width: 90, alignment: .leading)
+                        .frame(width: 130, alignment: .leading)
                 } else {
                     Text(L.t("history.week_header", language)).font(.system(size: 11, weight: .semibold))
-                        .frame(width: 90, alignment: .leading)
+                        .frame(width: 130, alignment: .leading)
                 }
 
                 Spacer(minLength: 8)
+                Text(L.t("history.sent_header", language)).font(.system(size: 11, weight: .semibold))
+                    .frame(width: 75, alignment: .trailing)
+                Text(L.t("history.received_header", language)).font(.system(size: 11, weight: .semibold))
+                    .frame(width: 75, alignment: .trailing)
                 Text(L.t("history.tokens_header", language)).font(.system(size: 11, weight: .semibold))
-                    .frame(width: 80, alignment: .trailing)
+                    .frame(width: 75, alignment: .trailing)
                 Spacer(minLength: 8)
                 Text(L.t("history.price_header", language)).font(.system(size: 11, weight: .semibold))
-                    .frame(width: 80, alignment: .trailing)
+                    .frame(width: 75, alignment: .trailing)
             }
             .padding(.bottom, 4)
 
             ForEach(Array(rows.reversed().enumerated()), id: \.element.id) { index, item in
                 HStack {
-                    Text(item.label)
+                    Text(item.tableLabel)
                         .font(.system(size: 10))
-                        .frame(width: 90, alignment: .leading)
+                        .frame(width: 130, alignment: .leading)
 
                     Spacer(minLength: 8)
+                    Text(appState.formatTokens(item.sent))
+                        .font(.system(size: 10, design: .monospaced))
+                        .frame(width: 75, alignment: .trailing)
+
+                    Text(appState.formatTokens(item.received))
+                        .font(.system(size: 10, design: .monospaced))
+                        .frame(width: 75, alignment: .trailing)
+
                     Text(appState.formatTokens(item.tokens))
                         .font(.system(size: 10, design: .monospaced))
-                        .frame(width: 80, alignment: .trailing)
+                        .frame(width: 75, alignment: .trailing)
 
                     Spacer(minLength: 8)
                     Text(appState.formatCostInDollars(item.cost))
                         .font(.system(size: 10, design: .monospaced))
-                        .frame(width: 80, alignment: .trailing)
+                        .frame(width: 75, alignment: .trailing)
                 }
                 .padding(.vertical, 3)
                 .padding(.horizontal, 6)

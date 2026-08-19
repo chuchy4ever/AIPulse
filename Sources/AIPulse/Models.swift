@@ -56,12 +56,16 @@ struct PeriodRow: Codable {
     let period: String?
     let totalTokens: Int
     let totalCost: Double
+    let sentTokens: Int
+    let receivedTokens: Int
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         period = try c.decodeIfPresent(String.self, forKey: .period)
         totalTokens = try c.decodeIfPresent(Int.self, forKey: .totalTokens) ?? 0
         totalCost = try c.decodeIfPresent(Double.self, forKey: .totalCost) ?? 0
+        sentTokens = try c.decodeIfPresent(Int.self, forKey: .sentTokens) ?? 0
+        receivedTokens = try c.decodeIfPresent(Int.self, forKey: .receivedTokens) ?? 0
     }
 }
 
@@ -217,12 +221,34 @@ struct WeekData: Codable {
     let week: String
     let tokens: Int
     let cost: Double
+    let sentTokens: Int
+    let receivedTokens: Int
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        week = try c.decode(String.self, forKey: .week)
+        tokens = try c.decodeIfPresent(Int.self, forKey: .tokens) ?? 0
+        cost = try c.decodeIfPresent(Double.self, forKey: .cost) ?? 0
+        sentTokens = try c.decodeIfPresent(Int.self, forKey: .sentTokens) ?? 0
+        receivedTokens = try c.decodeIfPresent(Int.self, forKey: .receivedTokens) ?? 0
+    }
 }
 
 struct MonthData: Codable {
     let month: String
     let tokens: Int
     let cost: Double
+    let sentTokens: Int
+    let receivedTokens: Int
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        month = try c.decode(String.self, forKey: .month)
+        tokens = try c.decodeIfPresent(Int.self, forKey: .tokens) ?? 0
+        cost = try c.decodeIfPresent(Double.self, forKey: .cost) ?? 0
+        sentTokens = try c.decodeIfPresent(Int.self, forKey: .sentTokens) ?? 0
+        receivedTokens = try c.decodeIfPresent(Int.self, forKey: .receivedTokens) ?? 0
+    }
 }
 
 struct Config: Codable {
