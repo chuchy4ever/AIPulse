@@ -1019,6 +1019,8 @@ struct HistorySectionView: View {
                     VStack(alignment: .leading, spacing: 12) {
                         renderChart()
 
+                        renderNoCacheChart()
+
                         Divider()
 
                         renderSummary()
@@ -1133,6 +1135,57 @@ struct HistorySectionView: View {
                     }
                 }
             }
+        }
+    }
+
+    /// Cache dwarfs everything at 99.5%, so the main chart is one grey block.
+    /// Dropping it puts input and output on a scale where they can be compared.
+    @ViewBuilder
+    private func renderNoCacheChart() -> some View {
+        let language = appState.config?.language ?? "cs"
+        let inputLabel = L.t("history.input_header", language)
+        let outputLabel = L.t("history.output_header", language)
+
+        VStack(alignment: .leading, spacing: 4) {
+            Text(L.t("history.without_cache", language))
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(.secondary)
+
+            Chart {
+                ForEach(rows, id: \.id) { item in
+                    BarMark(
+                        x: .value(L.t("history.day_header", language), item.label),
+                        y: .value(L.t("history.tokens_header", language), item.input)
+                    )
+                    .foregroundStyle(by: .value(L.t("history.tokens_header", language), inputLabel))
+
+                    BarMark(
+                        x: .value(L.t("history.day_header", language), item.label),
+                        y: .value(L.t("history.tokens_header", language), item.output)
+                    )
+                    .foregroundStyle(by: .value(L.t("history.tokens_header", language), outputLabel))
+                }
+            }
+            .chartForegroundStyleScale([
+                inputLabel: Color.blue.opacity(0.7),
+                outputLabel: Color.orange
+            ])
+            .chartLegend(position: .bottom, spacing: 8)
+            .frame(height: 140)
+            .chartYAxis {
+                AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) { value in
+                    AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                        .foregroundStyle(Color.gray.opacity(0.2))
+                    AxisTick(length: 4)
+                    if let intValue = value.as(Int.self) {
+                        AxisValueLabel {
+                            Text(appState.formatYAxisLabel(intValue))
+                                .font(.system(size: 9))
+                        }
+                    }
+                }
+            }
+            .chartXAxis(.hidden)
         }
     }
 

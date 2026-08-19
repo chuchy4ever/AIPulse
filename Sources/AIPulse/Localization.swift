@@ -127,6 +127,7 @@ enum L {
             "history.output_header": "Výstup",
             "history.price_header": "Cena",
             "history.week_label": "%@. týden %@",
+            "history.without_cache": "Vstup a výstup bez cache",
             "history.total": "Celkem",
             "history.all_time": "Od začátku",
 
@@ -312,6 +313,7 @@ enum L {
             "history.output_header": "Output",
             "history.price_header": "Price",
             "history.week_label": "Week %@, %@",
+            "history.without_cache": "Input and output without cache",
             "history.total": "Total",
             "history.all_time": "All time",
 
