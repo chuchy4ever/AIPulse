@@ -888,8 +888,9 @@ struct HistorySectionView: View {
         let tableLabel: String
         let tokens: Int
         let cost: Double
-        let sent: Int
-        let received: Int
+        let input: Int
+        let cache: Int
+        let output: Int
     }
 
     var selectedPeriod: String {
@@ -912,8 +913,9 @@ struct HistorySectionView: View {
                     tableLabel: appState.getDayLabelLong(item.period ?? ""),
                     tokens: item.totalTokens,
                     cost: item.totalCost,
-                    sent: item.sentTokens,
-                    received: item.receivedTokens
+                    input: item.inputTokens,
+                    cache: item.cacheTokens,
+                    output: item.outputTokens
                 )
             }
         } else if period == "month", let monthlyData = appState.data?.aggregations.monthlyHistory {
@@ -925,8 +927,9 @@ struct HistorySectionView: View {
                     tableLabel: appState.formatMonthLabelLong(item.month),
                     tokens: item.tokens,
                     cost: item.cost,
-                    sent: item.sentTokens,
-                    received: item.receivedTokens
+                    input: item.inputTokens,
+                    cache: item.cacheTokens,
+                    output: item.outputTokens
                 )
             }
         } else {
@@ -944,8 +947,9 @@ struct HistorySectionView: View {
                                        number as NSString, year as NSString),
                     tokens: item.tokens,
                     cost: item.cost,
-                    sent: item.sentTokens,
-                    received: item.receivedTokens
+                    input: item.inputTokens,
+                    cache: item.cacheTokens,
+                    output: item.outputTokens
                 )
             }
         }
@@ -965,10 +969,12 @@ struct HistorySectionView: View {
                             Text("")
                                 .frame(width: 60, alignment: .leading)
                             Spacer(minLength: 8)
-                            Text(L.t("history.sent_header", language))
+                            Text(L.t("history.input_header", language))
+                                .frame(width: 65, alignment: .trailing)
+                            Text(L.t("history.cache_header", language))
                                 .frame(width: 75, alignment: .trailing)
-                            Text(L.t("history.received_header", language))
-                                .frame(width: 75, alignment: .trailing)
+                            Text(L.t("history.output_header", language))
+                                .frame(width: 70, alignment: .trailing)
                             Text(L.t("history.price_header", language))
                                 .frame(width: 75, alignment: .trailing)
                         }
@@ -1040,10 +1046,12 @@ struct HistorySectionView: View {
                 .font(.system(size: 11))
                 .frame(width: 60, alignment: .leading)
             Spacer(minLength: 8)
-            Text(appState.formatTokens(totals.sentTokens))
+            Text(appState.formatTokens(totals.inputTokens))
+                .frame(width: 65, alignment: .trailing)
+            Text(appState.formatTokens(totals.cacheTokens))
                 .frame(width: 75, alignment: .trailing)
-            Text(appState.formatTokens(totals.receivedTokens))
-                .frame(width: 75, alignment: .trailing)
+            Text(appState.formatTokens(totals.outputTokens))
+                .frame(width: 70, alignment: .trailing)
             Text(appState.formatCostInDollars(totals.totalCost))
                 .frame(width: 75, alignment: .trailing)
         }
@@ -1054,30 +1062,35 @@ struct HistorySectionView: View {
     private func renderChart() -> some View {
         let language = appState.config?.language ?? "cs"
 
-        let sentLabel = L.t("history.sent_header", language)
-        let receivedLabel = L.t("history.received_header", language)
+        let inputLabel = L.t("history.input_header", language)
+        let cacheLabel = L.t("history.cache_header", language)
+        let outputLabel = L.t("history.output_header", language)
 
-        // One bar per period, split in two rather than two bars side by side:
-        // the received share is a fraction of a percent and would be invisible
-        // as its own column anyway.
         Chart {
             ForEach(rows, id: \.id) { item in
                 BarMark(
                     x: .value(L.t("history.day_header", language), item.label),
-                    y: .value(L.t("history.tokens_header", language), item.sent)
+                    y: .value(L.t("history.tokens_header", language), item.input)
                 )
-                .foregroundStyle(by: .value(L.t("history.tokens_header", language), sentLabel))
+                .foregroundStyle(by: .value(L.t("history.tokens_header", language), inputLabel))
 
                 BarMark(
                     x: .value(L.t("history.day_header", language), item.label),
-                    y: .value(L.t("history.tokens_header", language), item.received)
+                    y: .value(L.t("history.tokens_header", language), item.cache)
                 )
-                .foregroundStyle(by: .value(L.t("history.tokens_header", language), receivedLabel))
+                .foregroundStyle(by: .value(L.t("history.tokens_header", language), cacheLabel))
+
+                BarMark(
+                    x: .value(L.t("history.day_header", language), item.label),
+                    y: .value(L.t("history.tokens_header", language), item.output)
+                )
+                .foregroundStyle(by: .value(L.t("history.tokens_header", language), outputLabel))
             }
         }
         .chartForegroundStyleScale([
-            sentLabel: Color.blue.opacity(0.7),
-            receivedLabel: Color.orange
+            inputLabel: Color.blue.opacity(0.7),
+            cacheLabel: Color.gray.opacity(0.5),
+            outputLabel: Color.orange
         ])
         .chartLegend(position: .bottom, spacing: 8)
         .frame(height: 200)
@@ -1127,20 +1140,24 @@ struct HistorySectionView: View {
     private func renderSummary() -> some View {
         let totalTokens = rows.map { $0.tokens }.reduce(0, +)
         let totalCost = rows.map { $0.cost }.reduce(0, +)
-        let totalSent = rows.map { $0.sent }.reduce(0, +)
-        let totalReceived = rows.map { $0.received }.reduce(0, +)
+        let totalInput = rows.map { $0.input }.reduce(0, +)
+        let totalCache = rows.map { $0.cache }.reduce(0, +)
+        let totalOutput = rows.map { $0.output }.reduce(0, +)
         let language = appState.config?.language ?? "cs"
 
         HStack {
             Text(L.t("history.total", language))
                 .font(.system(size: 11, weight: .semibold))
             Spacer(minLength: 8)
-            Text(appState.formatTokens(totalSent))
+            Text(appState.formatTokens(totalInput))
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .frame(width: 65, alignment: .trailing)
+            Text(appState.formatTokens(totalCache))
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 .frame(width: 75, alignment: .trailing)
-            Text(appState.formatTokens(totalReceived))
+            Text(appState.formatTokens(totalOutput))
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                .frame(width: 75, alignment: .trailing)
+                .frame(width: 70, alignment: .trailing)
             Text(appState.formatTokens(totalTokens))
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 .frame(width: 75, alignment: .trailing)
@@ -1171,10 +1188,12 @@ struct HistorySectionView: View {
                 }
 
                 Spacer(minLength: 8)
-                Text(L.t("history.sent_header", language)).font(.system(size: 11, weight: .semibold))
+                Text(L.t("history.input_header", language)).font(.system(size: 11, weight: .semibold))
+                    .frame(width: 65, alignment: .trailing)
+                Text(L.t("history.cache_header", language)).font(.system(size: 11, weight: .semibold))
                     .frame(width: 75, alignment: .trailing)
-                Text(L.t("history.received_header", language)).font(.system(size: 11, weight: .semibold))
-                    .frame(width: 75, alignment: .trailing)
+                Text(L.t("history.output_header", language)).font(.system(size: 11, weight: .semibold))
+                    .frame(width: 70, alignment: .trailing)
                 Text(L.t("history.total", language)).font(.system(size: 11, weight: .semibold))
                     .frame(width: 75, alignment: .trailing)
                 Spacer(minLength: 8)
@@ -1190,13 +1209,17 @@ struct HistorySectionView: View {
                         .frame(width: 130, alignment: .leading)
 
                     Spacer(minLength: 8)
-                    Text(appState.formatTokens(item.sent))
+                    Text(appState.formatTokens(item.input))
+                        .font(.system(size: 10, design: .monospaced))
+                        .frame(width: 65, alignment: .trailing)
+
+                    Text(appState.formatTokens(item.cache))
                         .font(.system(size: 10, design: .monospaced))
                         .frame(width: 75, alignment: .trailing)
 
-                    Text(appState.formatTokens(item.received))
+                    Text(appState.formatTokens(item.output))
                         .font(.system(size: 10, design: .monospaced))
-                        .frame(width: 75, alignment: .trailing)
+                        .frame(width: 70, alignment: .trailing)
 
                     Text(appState.formatTokens(item.tokens))
                         .font(.system(size: 10, design: .monospaced))

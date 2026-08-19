@@ -396,27 +396,18 @@ generated_at = datetime.now(timezone.utc).isoformat()
 
 limits = fetch_api_limits(old_limits)
 
-# Cache reads are still tokens sent to the model, so they belong on the sent side.
-# One definition only: five copies of this sum are five chances to drift apart.
-def sent_tokens(entry):
-    return ((entry.get("inputTokens", 0) or 0)
-            + (entry.get("cacheCreationTokens", 0) or 0)
+def cache_tokens(entry):
+    return ((entry.get("cacheCreationTokens", 0) or 0)
             + (entry.get("cacheReadTokens", 0) or 0))
 
-def received_tokens(entry):
-    return entry.get("outputTokens", 0) or 0
-
 for entry in claude_daily_data.get("daily", []):
-    entry["sentTokens"] = sent_tokens(entry)
-    entry["receivedTokens"] = received_tokens(entry)
+    entry["cacheTokens"] = cache_tokens(entry)
 
 for entry in claude_weekly_data.get("weekly", []):
-    entry["sentTokens"] = sent_tokens(entry)
-    entry["receivedTokens"] = received_tokens(entry)
+    entry["cacheTokens"] = cache_tokens(entry)
 
 for entry in claude_monthly_data.get("monthly", []):
-    entry["sentTokens"] = sent_tokens(entry)
-    entry["receivedTokens"] = received_tokens(entry)
+    entry["cacheTokens"] = cache_tokens(entry)
 
 output = {
     "generatedAt": generated_at,
@@ -559,11 +550,10 @@ output["codex"]["totals"] = codex_totals
 
 for totals in (output["claude"]["totals"], output["codex"]["totals"]):
     if totals:
-        totals["sentTokens"] = sent_tokens(totals)
-        totals["receivedTokens"] = received_tokens(totals)
+        totals["cacheTokens"] = cache_tokens(totals)
 
 weekly_history = []
-week_map = defaultdict(lambda: {"tokens": 0, "cost": 0, "sentTokens": 0, "receivedTokens": 0})
+week_map = defaultdict(lambda: {"tokens": 0, "cost": 0, "inputTokens": 0, "cacheTokens": 0, "outputTokens": 0})
 
 for entry in claude_weekly_data.get("weekly", []):
     date_str = entry.get("period", "")
@@ -575,8 +565,9 @@ for entry in claude_weekly_data.get("weekly", []):
             week_key = f"{year}-W{week_num}"
             week_map[week_key]["tokens"] += entry.get("totalTokens", 0)
             week_map[week_key]["cost"] += entry.get("totalCost", 0)
-            week_map[week_key]["sentTokens"] += sent_tokens(entry)
-            week_map[week_key]["receivedTokens"] += received_tokens(entry)
+            week_map[week_key]["inputTokens"] += (entry.get("inputTokens", 0) or 0)
+            week_map[week_key]["cacheTokens"] += cache_tokens(entry)
+            week_map[week_key]["outputTokens"] += (entry.get("outputTokens", 0) or 0)
         except:
             pass
 
@@ -585,15 +576,16 @@ for week_key in sorted(week_map.keys(), key=lambda w: (int(w.split('-')[0]), int
         "week": week_key,
         "tokens": week_map[week_key]["tokens"],
         "cost": week_map[week_key]["cost"],
-        "sentTokens": week_map[week_key]["sentTokens"],
-        "receivedTokens": week_map[week_key]["receivedTokens"]
+        "inputTokens": week_map[week_key]["inputTokens"],
+        "cacheTokens": week_map[week_key]["cacheTokens"],
+        "outputTokens": week_map[week_key]["outputTokens"]
     })
 
 output["aggregations"]["weeklyHistory"] = weekly_history[-12:]
 
 # Build monthly history
 monthly_history = []
-month_map = defaultdict(lambda: {"tokens": 0, "cost": 0, "sentTokens": 0, "receivedTokens": 0})
+month_map = defaultdict(lambda: {"tokens": 0, "cost": 0, "inputTokens": 0, "cacheTokens": 0, "outputTokens": 0})
 
 for entry in claude_monthly_data.get("monthly", []):
     period_str = entry.get("period", "")
@@ -603,8 +595,9 @@ for entry in claude_monthly_data.get("monthly", []):
             if month_key:
                 month_map[month_key]["tokens"] += entry.get("totalTokens", 0)
                 month_map[month_key]["cost"] += entry.get("totalCost", 0)
-                month_map[month_key]["sentTokens"] += sent_tokens(entry)
-                month_map[month_key]["receivedTokens"] += received_tokens(entry)
+                month_map[month_key]["inputTokens"] += (entry.get("inputTokens", 0) or 0)
+                month_map[month_key]["cacheTokens"] += cache_tokens(entry)
+                month_map[month_key]["outputTokens"] += (entry.get("outputTokens", 0) or 0)
         except:
             pass
 
@@ -613,8 +606,9 @@ for month_key in sorted(month_map.keys()):
         "month": month_key,
         "tokens": month_map[month_key]["tokens"],
         "cost": month_map[month_key]["cost"],
-        "sentTokens": month_map[month_key]["sentTokens"],
-        "receivedTokens": month_map[month_key]["receivedTokens"]
+        "inputTokens": month_map[month_key]["inputTokens"],
+        "cacheTokens": month_map[month_key]["cacheTokens"],
+        "outputTokens": month_map[month_key]["outputTokens"]
     })
 
 output["aggregations"]["monthlyHistory"] = monthly_history
