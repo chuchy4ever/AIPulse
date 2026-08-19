@@ -15,6 +15,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     var popover: NSPopover?
     var appState: AppState?
     var refreshTimer: Timer?
+    var outsideClickMonitor: Any?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Check for snapshot mode early before any UI setup
@@ -70,9 +71,34 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         appState?.loadData()
 
         if let popover = popover, popover.isShown {
-            popover.performClose(sender)
+            closePopover(sender)
         } else {
             popover?.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+
+            // .transient alone does not dismiss this: as an accessory app we are
+            // not active, so a click in another app never reaches AppKit's own
+            // dismissal. Watch for it ourselves while the popover is up.
+            outsideClickMonitor = NSEvent.addGlobalMonitorForEvents(
+                matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]
+            ) { [weak self] _ in
+                self?.closePopover(nil)
+            }
+        }
+    }
+
+    func closePopover(_ sender: Any?) {
+        popover?.performClose(sender)
+
+        if let monitor = outsideClickMonitor {
+            NSEvent.removeMonitor(monitor)
+            outsideClickMonitor = nil
+        }
+    }
+
+    func popoverDidClose(_ notification: Notification) {
+        if let monitor = outsideClickMonitor {
+            NSEvent.removeMonitor(monitor)
+            outsideClickMonitor = nil
         }
     }
 
