@@ -100,11 +100,12 @@ Settings → Sign-in has a tile for each provider, and the panel below follows
 whichever one is selected - Claude Code shows the account e-mail and plan, Codex
 shows how it is authenticated and against which account.
 
-Claude Code signs in through its own browser flow. Codex runs `codex login`,
-which opens a browser and completes on its own local callback; the app polls
-`codex login status` until it reports success, so there is nothing to copy or
-paste either way. Both CLIs are located through a login shell, so an install in
-`~/bin` or through nvm is found the same as one in `/usr/local/bin`.
+Codex runs `codex login`, which opens a browser and completes on its own local
+callback; the app polls `codex login status` until it reports success, so there
+is nothing to copy or paste. Claude Code goes through its own CLI flow, which
+still ends by asking you to paste the verification code back into a dialog.
+Both CLIs are located through a login shell, so an install in `~/bin` or through
+nvm is found the same as one in `/usr/local/bin`.
 
 ## Outage alerts
 
@@ -170,7 +171,7 @@ Remove the plist as well, not just the loaded job: `bootout` only unloads it for
 this session, so a leftover file gets picked up again at the next login and keeps
 running a collector that is no longer there.
 
-Or from the app: Settings → Log Out (removes OAuth session) → quit app → manually delete as above.
+Or from the app: Settings → Sign-in → Log out (removes the OAuth session) → quit app → manually delete as above.
 
 ## Troubleshooting
 
@@ -196,7 +197,7 @@ Or from the app: Settings → Log Out (removes OAuth session) → quit app → m
 - View logs: `log stream --predicate 'process == "bash"' --level debug`
 
 **Very old data**
-- Increase refresh frequency in Settings → Frequency
+- Increase the collection frequency in Settings → General → Update every
 - Or run `~/.local/share/aipulse/collect.sh` manually
 
 ## License

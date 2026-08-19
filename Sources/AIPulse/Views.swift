@@ -375,11 +375,6 @@ struct DayOfWeekChartView: View {
     }
     let englishDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
-    var dayLabels: [String] {
-        let language = appState.config?.language ?? "cs"
-        return language == "en" ? englishDays : czechDays
-    }
-
     var body: some View {
         let language = appState.config?.language ?? "cs"
         let dayLabels = language == "en" ? englishDays : czechDays
@@ -934,7 +929,18 @@ struct HistorySectionView: View {
             }
         } else {
             let weeklyData = appState.data?.aggregations.weeklyHistory ?? []
-            let sorted = weeklyData.sorted { $0.week < $1.week }
+            let sorted = weeklyData.sorted { a, b in
+                let aParts = a.week.split(separator: "-").map(String.init)
+                let bParts = b.week.split(separator: "-").map(String.init)
+                guard aParts.count == 2, bParts.count == 2,
+                      let aYear = Int(aParts[0]), let bYear = Int(bParts[0]),
+                      let aWeek = Int(aParts[1].replacingOccurrences(of: "W", with: "")),
+                      let bWeek = Int(bParts[1].replacingOccurrences(of: "W", with: "")) else {
+                    return a.week < b.week
+                }
+                if aYear != bYear { return aYear < bYear }
+                return aWeek < bWeek
+            }
             let recent = Array(sorted.suffix(12))
             return recent.map { item -> HistoryRow in
                 let parts = item.week.split(separator: "-").map(String.init)
@@ -1114,7 +1120,7 @@ struct HistorySectionView: View {
         }
         .chartXAxis {
             if selectedPeriod == "day" {
-                AxisMarks(values: .automatic(desiredCount: Int(Double(rows.count) / 5.0))) { value in
+                AxisMarks(values: .automatic(desiredCount: max(1, Int(Double(rows.count) / 5.0)))) { value in
                     AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
                         .foregroundStyle(Color.gray.opacity(0.2))
                     AxisTick(length: 4)
@@ -1298,6 +1304,7 @@ struct BarSettingsSectionView: View {
     @ObservedObject var appState: AppState
     @State private var launchAtLogin = false
     @State private var launchError: String?
+    @State private var isInitializing = true
 
     let styles = ["percentage", "compact", "progressBar", "batteryClassic", "iconWithBar"]
     private func setLaunchAtLogin(_ enabled: Bool, language: String) {
@@ -1318,11 +1325,6 @@ struct BarSettingsSectionView: View {
         // in System Settings; without saying so the switch looks broken again.
         launchError = status == .requiresApproval ? L.t("general.startup_needs_approval", language) : nil
         launchAtLogin = status == .enabled
-    }
-
-    var styleLabels: [String] {
-        let language = appState.config?.language ?? "cs"
-        return ["bar.style.percentage", "bar.style.compact", "bar.style.progressBar", "bar.style.battery", "bar.style.iconWithBar"].map { L.t($0, language) }
     }
 
     var currentValue: String {
@@ -1510,10 +1512,14 @@ struct BarSettingsSectionView: View {
                         }
                     }
                     .onAppear {
+                        isInitializing = true
                         launchAtLogin = SMAppService.mainApp.status == .enabled
+                        isInitializing = false
                     }
                     .onChange(of: launchAtLogin) { _, newValue in
-                        setLaunchAtLogin(newValue, language: language)
+                        if !isInitializing {
+                            setLaunchAtLogin(newValue, language: language)
+                        }
                     }
                 }
             }
@@ -1617,7 +1623,6 @@ struct LanguageSectionView: View {
     @ObservedObject var appState: AppState
 
     var body: some View {
-        let language = appState.config?.language ?? "cs"
         let currentLanguage = appState.config?.language ?? "cs"
 
         return VStack(alignment: .leading, spacing: 16) {

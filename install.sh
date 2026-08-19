@@ -12,6 +12,21 @@ LAUNCHD_LABEL="cz.chuchy.aipulse-collect"
 echo "=== AIPulse Install ==="
 echo ""
 
+# Reinstalling must not throw away an interval the user picked in the app:
+# config.json remembers it, the plist does not.
+INTERVAL_SECONDS=300
+if [[ -f "$DATA_DIR/config.json" ]]; then
+    MINUTES=$(python3 -c "
+import json, sys
+try:
+    v = int(json.load(open('$DATA_DIR/config.json')).get('refreshMinutes', 5))
+    print(v if 1 <= v <= 1440 else 5)
+except Exception:
+    print(5)
+" 2>/dev/null || echo 5)
+    INTERVAL_SECONDS=$((MINUTES * 60))
+fi
+
 # 1. Create data directory
 echo "1. Creating $DATA_DIR..."
 mkdir -p "$DATA_DIR"
@@ -169,7 +184,7 @@ cat > "$PLIST_PATH" << PLIST
 	<key>StandardOutPath</key>
 	<string>$DATA_DIR/stdout.log</string>
 	<key>StartInterval</key>
-	<integer>300</integer>
+	<integer>${INTERVAL_SECONDS}</integer>
 </dict>
 </plist>
 PLIST
@@ -183,7 +198,7 @@ else
   sed 's/^/    /' /tmp/aipulse-bootstrap.err
 fi
 rm -f /tmp/aipulse-bootstrap.err
-echo "   - Launchd job installed (runs every 5 minutes)"
+echo "   - Launchd job installed (runs every $((INTERVAL_SECONDS / 60)) minutes)"
 
 # 11. Launch the app
 echo "11. Launching application..."

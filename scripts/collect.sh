@@ -37,6 +37,10 @@ if ! mkdir "$LOCK_DIR" 2>/dev/null; then
     echo "[$(date -Iseconds)] Removing lock left by a dead run" >> "$LOG_FILE"
     rm -rf "$LOCK_DIR"
     mkdir "$LOCK_DIR" 2>/dev/null || exit 0
+  elif find "$LOCK_DIR" -maxdepth 0 -mmin +30 -print -quit 2>/dev/null | grep -q .; then
+    echo "[$(date -Iseconds)] Removing stale lock (older than 30 minutes)" >> "$LOG_FILE"
+    rm -rf "$LOCK_DIR"
+    mkdir "$LOCK_DIR" 2>/dev/null || exit 0
   else
     echo "[$(date -Iseconds)] Another collection is running, skipping" >> "$LOG_FILE"
     exit 0
@@ -51,7 +55,7 @@ trap 'rm -rf "$LOCK_DIR"' EXIT
   ERRORS_FILE="$DATA_DIR/.tmp.errors.json"
   echo "[]" > "$ERRORS_FILE"
 
-  if ccusage weekly --json > "$TMP_WEEKLY" 2>> "$LOG_FILE"; then
+  if ccusage claude weekly --json > "$TMP_WEEKLY" 2>> "$LOG_FILE"; then
     echo "[$(date -Iseconds)] Claude weekly: OK"
   else
     ERROR_MSG="Claude weekly failed"
@@ -67,7 +71,7 @@ EOF
     echo "{\"totals\": {}, \"weekly\": []}" > "$TMP_WEEKLY"
   fi
 
-  if ccusage daily --json > "$TMP_DAILY" 2>> "$LOG_FILE"; then
+  if ccusage claude daily --json > "$TMP_DAILY" 2>> "$LOG_FILE"; then
     echo "[$(date -Iseconds)] Claude daily: OK"
   else
     ERROR_MSG="Claude daily failed"
@@ -83,7 +87,7 @@ EOF
     echo "{\"daily\": []}" > "$TMP_DAILY"
   fi
 
-  if ccusage monthly --json > "$TMP_MONTHLY" 2>> "$LOG_FILE"; then
+  if ccusage claude monthly --json > "$TMP_MONTHLY" 2>> "$LOG_FILE"; then
     echo "[$(date -Iseconds)] Claude monthly: OK"
   else
     ERROR_MSG="Claude monthly failed"
@@ -279,6 +283,17 @@ def safe_load_json(filepath):
     except:
         return {}
 
+def normalize_period(entries, list_key):
+    """Normalize period field: map date/week/month to period."""
+    for entry in entries.get(list_key, []):
+        if "period" not in entry:
+            if "date" in entry:
+                entry["period"] = entry["date"]
+            elif "week" in entry:
+                entry["period"] = entry["week"]
+            elif "month" in entry:
+                entry["period"] = entry["month"]
+
 def process_service_status(status_raw):
     """Extract status, components (with id), and incidents from summary.json."""
     result = {
@@ -313,14 +328,17 @@ old_limits = old_data.get("limits") or {}
 claude_weekly_data = safe_load_json(os.path.join(data_dir, ".tmp.weekly.json"))
 if not claude_weekly_data:
     claude_weekly_data = {"totals": {}, "weekly": []}
+normalize_period(claude_weekly_data, "weekly")
 
 claude_daily_data = safe_load_json(os.path.join(data_dir, ".tmp.daily.json"))
 if not claude_daily_data:
     claude_daily_data = {"daily": []}
+normalize_period(claude_daily_data, "daily")
 
 claude_monthly_data = safe_load_json(os.path.join(data_dir, ".tmp.monthly.json"))
 if not claude_monthly_data:
     claude_monthly_data = {"monthly": []}
+normalize_period(claude_monthly_data, "monthly")
 
 codex_daily_data = safe_load_json(os.path.join(data_dir, ".tmp.codex.json"))
 if not codex_daily_data:
@@ -555,7 +573,10 @@ for totals in (output["claude"]["totals"], output["codex"]["totals"]):
 weekly_history = []
 week_map = defaultdict(lambda: {"tokens": 0, "cost": 0, "inputTokens": 0, "cacheTokens": 0, "outputTokens": 0})
 
-for entry in claude_weekly_data.get("weekly", []):
+# Built from daily rows on purpose: ccusage's weekly endpoint starts its weeks
+# on Sunday, so deriving an ISO week number from that start date lands one week
+# short. Days carry no such convention.
+for entry in claude_daily_data.get("daily", []):
     date_str = entry.get("period", "")
     if date_str:
         try:

@@ -485,7 +485,8 @@ class AppState: ObservableObject {
                 let timeout: TimeInterval = 180
 
                 DispatchQueue.global(qos: .userInitiated).async {
-                    while Date().timeIntervalSince(startTime) < timeout {
+                    var finished = false
+                    while Date().timeIntervalSince(startTime) < timeout && !finished {
                         let statusProcess = Process()
                         statusProcess.executableURL = URL(fileURLWithPath: codexPath)
                         statusProcess.arguments = ["login", "status"]
@@ -504,6 +505,10 @@ class AppState: ObservableObject {
                                 let outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
                                 let outputText = String(data: outputData, encoding: .utf8) ?? ""
                                 if outputText.contains("Logged in") {
+                                    finished = true
+                                    if loginProcess.isRunning {
+                                        loginProcess.terminate()
+                                    }
                                     DispatchQueue.main.async {
                                         self.loadData()
                                         completion(true, nil)
@@ -518,6 +523,9 @@ class AppState: ObservableObject {
                         Thread.sleep(forTimeInterval: 2)
                     }
 
+                    if loginProcess.isRunning {
+                        loginProcess.terminate()
+                    }
                     let lang = self.config?.language ?? "cs"
                     let errorMsg = L.t("login.timed_out", lang)
                     DispatchQueue.main.async {

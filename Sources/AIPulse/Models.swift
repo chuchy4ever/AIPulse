@@ -9,6 +9,18 @@ struct UsageData: Codable {
     let services: Services
     let errors: [String]
     let aggregations: Aggregations
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        generatedAt = try c.decodeIfPresent(String.self, forKey: .generatedAt) ?? ""
+        auth = try c.decodeIfPresent(AuthByProvider.self, forKey: .auth) ?? AuthByProvider()
+        claude = try c.decodeIfPresent(Provider.self, forKey: .claude) ?? Provider()
+        codex = try c.decodeIfPresent(Provider.self, forKey: .codex) ?? Provider()
+        limits = try c.decodeIfPresent(Limits.self, forKey: .limits)
+        services = try c.decodeIfPresent(Services.self, forKey: .services) ?? Services()
+        errors = try c.decodeIfPresent([String].self, forKey: .errors) ?? []
+        aggregations = try c.decodeIfPresent(Aggregations.self, forKey: .aggregations) ?? Aggregations()
+    }
 }
 
 struct ProviderAuth: Codable {
@@ -84,9 +96,16 @@ struct Provider: Codable {
         case monthlyData
     }
 
+    init(totals: ProviderTotals = ProviderTotals(), dailyData: [PeriodRow]? = nil, weeklyData: [PeriodRow]? = nil, monthlyData: [PeriodRow]? = nil) {
+        self.totals = totals
+        self.dailyData = dailyData
+        self.weeklyData = weeklyData
+        self.monthlyData = monthlyData
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        totals = try container.decode(ProviderTotals.self, forKey: .totals)
+        totals = try container.decodeIfPresent(ProviderTotals.self, forKey: .totals) ?? ProviderTotals()
         dailyData = try container.decodeIfPresent([PeriodRow].self, forKey: .dailyData)
         weeklyData = try container.decodeIfPresent([PeriodRow].self, forKey: .weeklyData)
         monthlyData = try container.decodeIfPresent([PeriodRow].self, forKey: .monthlyData)
@@ -107,6 +126,14 @@ struct ProviderTotals: Codable {
     let inputTokens: Int
     let cacheTokens: Int
     let outputTokens: Int
+
+    init(totalTokens: Int = 0, totalCost: Double = 0, inputTokens: Int = 0, cacheTokens: Int = 0, outputTokens: Int = 0) {
+        self.totalTokens = totalTokens
+        self.totalCost = totalCost
+        self.inputTokens = inputTokens
+        self.cacheTokens = cacheTokens
+        self.outputTokens = outputTokens
+    }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -145,6 +172,17 @@ struct LimitDetail: Codable {
 struct Services: Codable {
     let anthropic: ServiceStatus
     let openai: ServiceStatus
+
+    init(anthropic: ServiceStatus = ServiceStatus(), openai: ServiceStatus = ServiceStatus()) {
+        self.anthropic = anthropic
+        self.openai = openai
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        anthropic = try c.decodeIfPresent(ServiceStatus.self, forKey: .anthropic) ?? ServiceStatus()
+        openai = try c.decodeIfPresent(ServiceStatus.self, forKey: .openai) ?? ServiceStatus()
+    }
 }
 
 struct ServiceStatus: Codable {
@@ -152,17 +190,23 @@ struct ServiceStatus: Codable {
     let components: [ServiceComponent]?
     let incidents: [ServiceIncident]?
 
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        status = try container.decode(StatusDetail.self, forKey: .status)
-        components = try container.decodeIfPresent([ServiceComponent].self, forKey: .components)
-        incidents = try container.decodeIfPresent([ServiceIncident].self, forKey: .incidents)
-    }
-
     enum CodingKeys: String, CodingKey {
         case status
         case components
         case incidents
+    }
+
+    init(status: StatusDetail = StatusDetail(), components: [ServiceComponent]? = nil, incidents: [ServiceIncident]? = nil) {
+        self.status = status
+        self.components = components
+        self.incidents = incidents
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        status = try container.decodeIfPresent(StatusDetail.self, forKey: .status) ?? StatusDetail()
+        components = try container.decodeIfPresent([ServiceComponent].self, forKey: .components)
+        incidents = try container.decodeIfPresent([ServiceIncident].self, forKey: .incidents)
     }
 }
 
@@ -196,6 +240,11 @@ struct StatusDetail: Codable {
     let indicator: String
     let description: String
 
+    init(indicator: String = "unknown", description: String = "") {
+        self.indicator = indicator
+        self.description = description
+    }
+
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         indicator = try c.decodeIfPresent(String.self, forKey: .indicator) ?? "unknown"
@@ -210,6 +259,25 @@ struct Aggregations: Codable {
     let weeklyHistory: [WeekData]
     let monthlyHistory: [MonthData]?
     let currentWeekByDayOfWeek: [DayData]?
+
+    init(byDayOfWeek: [DayData] = [], byModel: [ModelData] = [], currentWeekByModel: [ModelData] = [], weeklyHistory: [WeekData] = [], monthlyHistory: [MonthData]? = nil, currentWeekByDayOfWeek: [DayData]? = nil) {
+        self.byDayOfWeek = byDayOfWeek
+        self.byModel = byModel
+        self.currentWeekByModel = currentWeekByModel
+        self.weeklyHistory = weeklyHistory
+        self.monthlyHistory = monthlyHistory
+        self.currentWeekByDayOfWeek = currentWeekByDayOfWeek
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        byDayOfWeek = try c.decodeIfPresent([DayData].self, forKey: .byDayOfWeek) ?? []
+        byModel = try c.decodeIfPresent([ModelData].self, forKey: .byModel) ?? []
+        currentWeekByModel = try c.decodeIfPresent([ModelData].self, forKey: .currentWeekByModel) ?? []
+        weeklyHistory = try c.decodeIfPresent([WeekData].self, forKey: .weeklyHistory) ?? []
+        monthlyHistory = try c.decodeIfPresent([MonthData].self, forKey: .monthlyHistory)
+        currentWeekByDayOfWeek = try c.decodeIfPresent([DayData].self, forKey: .currentWeekByDayOfWeek)
+    }
 }
 
 struct DayData: Codable {
@@ -217,12 +285,40 @@ struct DayData: Codable {
     let tokens: Int
     let cost: Double
     let entries: Int
+
+    init(name: String = "", tokens: Int = 0, cost: Double = 0, entries: Int = 0) {
+        self.name = name
+        self.tokens = tokens
+        self.cost = cost
+        self.entries = entries
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = try c.decodeIfPresent(String.self, forKey: .name) ?? ""
+        tokens = try c.decodeIfPresent(Int.self, forKey: .tokens) ?? 0
+        cost = try c.decodeIfPresent(Double.self, forKey: .cost) ?? 0
+        entries = try c.decodeIfPresent(Int.self, forKey: .entries) ?? 0
+    }
 }
 
 struct ModelData: Codable {
     let model: String
     let tokens: Int
     let cost: Double
+
+    init(model: String = "", tokens: Int = 0, cost: Double = 0) {
+        self.model = model
+        self.tokens = tokens
+        self.cost = cost
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        model = try c.decodeIfPresent(String.self, forKey: .model) ?? ""
+        tokens = try c.decodeIfPresent(Int.self, forKey: .tokens) ?? 0
+        cost = try c.decodeIfPresent(Double.self, forKey: .cost) ?? 0
+    }
 }
 
 struct WeekData: Codable {

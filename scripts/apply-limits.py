@@ -1,8 +1,15 @@
-import json, sys, os, datetime
+import json, sys, os, datetime, tempfile
 
 payload_path, data_path = sys.argv[1], sys.argv[2]
-with open(payload_path) as handle:
-    payload = json.load(handle)
+
+# The app shows this script's stderr to the user, so a traceback would end up
+# on screen as the explanation of what went wrong.
+try:
+    with open(payload_path) as handle:
+        payload = json.load(handle)
+except (OSError, json.JSONDecodeError):
+    print(f"usage payload is missing or not valid JSON: {payload_path}", file=sys.stderr)
+    sys.exit(1)
 
 try:
     with open(data_path) as handle:
@@ -36,8 +43,17 @@ data["limits"] = {
     "weekly": weekly,
     "fetchedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(),
 }
-tmp = data_path + ".tmp"
-with open(tmp, "w") as handle:
+# Not data_path + ".tmp": collect.sh streams its own output into exactly that
+# name, and truncating it mid-write leaves the collector's remaining bytes
+# landing straight in data.json.
+handle = tempfile.NamedTemporaryFile("w", dir=os.path.dirname(data_path),
+                                     prefix=".limits.", suffix=".tmp", delete=False)
+try:
     json.dump(data, handle)
-os.replace(tmp, data_path)
+    handle.close()
+    os.replace(handle.name, data_path)
+except BaseException:
+    handle.close()
+    os.unlink(handle.name)
+    raise
 print(f"session {data['limits']['session']['percent']} %, weekly {data['limits']['weekly']['percent']} %")
