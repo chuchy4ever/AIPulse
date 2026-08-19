@@ -39,6 +39,20 @@ struct PopoverView: View {
                         )
 
                         LimitRowsView(limits: limits, appState: appState)
+
+                        // A gauge that keeps its last good numbers looks healthy;
+                        // say out loud that nothing behind it is moving.
+                        if let stale = limits.stale {
+                            Label(
+                                L.t(stale == "auth_expired" ? "limits.stale_auth" : "limits.stale_failed", language),
+                                systemImage: "exclamationmark.triangle.fill"
+                            )
+                            .font(.system(size: 10))
+                            .foregroundColor(.orange)
+                            .padding(.horizontal, 12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+
                         Divider()
                     } else {
                         Text(L.t("limits.no_limits", language))

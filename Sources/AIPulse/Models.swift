@@ -149,12 +149,16 @@ struct Limits: Codable {
     let session: LimitDetail?
     let weekly: LimitDetail?
     let fetchedAt: String?
+    /// Why these numbers stopped moving: "auth_expired", "no_token", "failed".
+    /// Absent when the last fetch succeeded.
+    let stale: String?
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         session = try c.decodeIfPresent(LimitDetail.self, forKey: .session)
         weekly = try c.decodeIfPresent(LimitDetail.self, forKey: .weekly)
         fetchedAt = try c.decodeIfPresent(String.self, forKey: .fetchedAt)
+        stale = try c.decodeIfPresent(String.self, forKey: .stale)
     }
 }
 

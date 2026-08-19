@@ -180,7 +180,7 @@ data_dir = os.path.expanduser("~/.local/share/aipulse")
 
 def fetch_api_limits(old_limits=None):
     """Fetch session and weekly limits from Anthropic API."""
-    def get_api_token():
+    def get_oauth():
         try:
             result = subprocess.run(
                 ['security', 'find-generic-password', '-s', 'Claude Code-credentials', '-w'],
@@ -188,8 +188,7 @@ def fetch_api_limits(old_limits=None):
             )
             if result.returncode == 0:
                 try:
-                    creds = json.loads(result.stdout.strip())
-                    return creds.get('claudeAiOauth', {}).get('accessToken')
+                    return json.loads(result.stdout.strip()).get('claudeAiOauth', {})
                 except:
                     pass
         except:
@@ -199,31 +198,66 @@ def fetch_api_limits(old_limits=None):
             creds_path = os.path.expanduser('~/.claude/.credentials.json')
             if os.path.exists(creds_path):
                 with open(creds_path) as f:
-                    creds = json.load(f)
-                    return creds.get('claudeAiOauth', {}).get('accessToken')
+                    return json.load(f).get('claudeAiOauth', {})
         except:
             pass
 
-        return None
+        return {}
 
     if old_limits is None:
         old_limits = {}
 
     # A failed fetch must not wipe limits that are already on disk: the app would
     # show an empty gauge until the next successful run, and a 429 is routine.
-    def keep_previous():
-        if old_limits.get('session') or old_limits.get('weekly'):
-            return {
-                'session': old_limits.get('session'),
-                'weekly': old_limits.get('weekly'),
-                'fetchedAt': old_limits.get('fetchedAt'),
-            }
+    now = datetime.now(timezone.utc)
+
+    def keep_previous(stale=None):
+        kept = {
+            'session': old_limits.get('session'),
+            'weekly': old_limits.get('weekly'),
+            'fetchedAt': old_limits.get('fetchedAt'),
+            # Why the numbers stopped moving. Without it a frozen gauge is
+            # indistinguishable from a gauge that simply has not changed.
+            'stale': stale,
+            'lastTryAt': now.isoformat(),
+        }
+        if kept['session'] or kept['weekly'] or stale:
+            return kept
         return None
 
-    token = get_api_token()
+    # Retrying a dead sign-in every five minutes is how a lapsed login turned
+    # into a 429 that outlived it. Once the credentials are the problem, ask
+    # again at half past the hour, not at every tick.
+    if old_limits.get('stale') in ('auth_expired', 'no_token'):
+        last_try = old_limits.get('lastTryAt')
+        if last_try:
+            try:
+                waited = (now - datetime.fromisoformat(last_try)).total_seconds()
+                if waited < 1800:
+                    print(f"[{now.isoformat()}] Limits: SKIPPED backoff", file=sys.stderr)
+                    return {
+                        'session': old_limits.get('session'),
+                        'weekly': old_limits.get('weekly'),
+                        'fetchedAt': old_limits.get('fetchedAt'),
+                        'stale': old_limits.get('stale'),
+                        'lastTryAt': last_try,
+                    }
+            except ValueError:
+                pass
+
+    oauth = get_oauth()
+    token = oauth.get('accessToken')
     if not token:
         print(f"[{datetime.now(timezone.utc).isoformat()}] Limits: No token available", file=sys.stderr)
-        return keep_previous()
+        return keep_previous('no_token')
+
+    # Claude Code records when the token dies. Asking anyway earns a 401, and
+    # asking every five minutes with a dead token earns a 429 on top of it -
+    # which is how a expired login turned into a rate limit that outlived it.
+    expires_at = oauth.get('expiresAt')
+    if not expires_at or expires_at / 1000 < now.timestamp():
+        print(f"[{now.isoformat()}] Limits: SKIPPED expired", file=sys.stderr)
+        return keep_previous('auth_expired')
 
     try:
         url = 'https://api.anthropic.com/api/oauth/usage'
@@ -271,10 +305,10 @@ def fetch_api_limits(old_limits=None):
                 return None
     except urllib.error.HTTPError as e:
         print(f"[{datetime.now(timezone.utc).isoformat()}] Limits: FAILED {e.code}", file=sys.stderr)
-        return keep_previous()
+        return keep_previous('auth_expired' if e.code == 401 else 'failed')
     except Exception as e:
         print(f"[{datetime.now(timezone.utc).isoformat()}] Limits: FAILED {type(e).__name__}", file=sys.stderr)
-        return keep_previous()
+        return keep_previous('failed')
 
 def safe_load_json(filepath):
     try:

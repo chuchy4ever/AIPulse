@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 import subprocess
 import json
+import re
 import sys
 import os
+import time
 from pathlib import Path
 from datetime import datetime
 
@@ -50,6 +52,43 @@ def show_dialog(title, message, ok_button="OK", cancel_button=None):
         text=True,
     )
     return result.returncode == 0
+
+def notify(message):
+    """Non-blocking: a dialog here would freeze the clipboard watch behind it."""
+    subprocess.run(
+        ["osascript", "-e",
+         f'display notification "{message}" with title "Přihlášení do Claude Code"'],
+        capture_output=True,
+    )
+
+
+# The code the browser hands out is base64url, optionally with the state after
+# a hash. Loose enough to survive a format tweak, tight enough not to fire on
+# whatever the user happened to copy earlier.
+CODE_PATTERN = re.compile(r"^[A-Za-z0-9_\-]{16,}(#[A-Za-z0-9_\-]{6,})?$")
+
+
+def wait_for_copied_code(timeout=180):
+    """Claude Code has no loopback callback: the browser shows a code and waits
+    for it to be pasted. Watching the clipboard turns that into one click on
+    Kopírovat instead of a dialog the user has to fill in by hand."""
+    def clipboard():
+        try:
+            return subprocess.run(["pbpaste"], capture_output=True, text=True, timeout=3).stdout.strip()
+        except Exception:
+            return ""
+
+    before = clipboard()
+    deadline = time.time() + timeout
+
+    while time.time() < deadline:
+        current = clipboard()
+        if current and current != before and CODE_PATTERN.match(current):
+            return current
+        time.sleep(0.5)
+
+    return None
+
 
 def show_input_dialog(message, max_attempts=1):
     applescript = f'''
@@ -142,7 +181,16 @@ def run_login():
             log_message("LOGIN_FAILED_NO_PROMPT")
             return False
 
-        code = show_input_dialog("Přihlaš se v prohlížeči a vlož sem ověřovací kód.")
+        notify("Přihlas se v prohlížeči a klikni na kopírování kódu. Zbytek dodělám sám.")
+        code = wait_for_copied_code()
+
+        if code is not None:
+            log_message(f"CODE_FROM_CLIPBOARD_ATTEMPT_{attempt}")
+        else:
+            # The watch can miss it - a code typed by hand, a clipboard manager
+            # in the way - so the old dialog stays as the way out.
+            log_message(f"CLIPBOARD_TIMEOUT_ATTEMPT_{attempt}")
+            code = show_input_dialog("Kód se nepodařilo přečíst ze schránky. Vlož ho sem.")
 
         if code is None:
             log_message(f"USER_CANCELLED_ATTEMPT_{attempt}")
