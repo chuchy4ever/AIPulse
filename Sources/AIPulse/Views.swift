@@ -960,33 +960,25 @@ struct HistorySectionView: View {
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundColor(.secondary)
 
-                    VStack(alignment: .leading, spacing: 4) {
+                    VStack(alignment: .leading, spacing: 6) {
                         HStack(spacing: 8) {
-                            Text(L.t("login.provider_claude", language))
-                                .font(.system(size: 11))
-                            Spacer()
-                            Text(appState.formatTokens(data.claude.totals.totalTokens))
-                                .font(.system(size: 11, design: .monospaced))
-                            Text("·")
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
-                            Text(appState.formatCostInDollars(data.claude.totals.totalCost))
-                                .font(.system(size: 11, design: .monospaced))
+                            Text("")
+                                .frame(width: 60, alignment: .leading)
+                            Spacer(minLength: 8)
+                            Text(L.t("history.sent_header", language))
+                                .frame(width: 75, alignment: .trailing)
+                            Text(L.t("history.received_header", language))
+                                .frame(width: 75, alignment: .trailing)
+                            Text(L.t("history.price_header", language))
+                                .frame(width: 75, alignment: .trailing)
                         }
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundColor(.secondary)
+
+                        allTimeRow(name: L.t("login.provider_claude", language), totals: data.claude.totals)
 
                         if data.codex.totals.totalTokens > 0 {
-                            HStack(spacing: 8) {
-                                Text(L.t("login.provider_codex", language))
-                                    .font(.system(size: 11))
-                                Spacer()
-                                Text(appState.formatTokens(data.codex.totals.totalTokens))
-                                    .font(.system(size: 11, design: .monospaced))
-                                Text("·")
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.secondary)
-                                Text(appState.formatCostInDollars(data.codex.totals.totalCost))
-                                    .font(.system(size: 11, design: .monospaced))
-                            }
+                            allTimeRow(name: L.t("login.provider_codex", language), totals: data.codex.totals)
                         }
                     }
                     .padding(10)
@@ -1039,6 +1031,23 @@ struct HistorySectionView: View {
             Spacer()
         }
         .padding()
+    }
+
+    @ViewBuilder
+    private func allTimeRow(name: String, totals: ProviderTotals) -> some View {
+        HStack(spacing: 8) {
+            Text(name)
+                .font(.system(size: 11))
+                .frame(width: 60, alignment: .leading)
+            Spacer(minLength: 8)
+            Text(appState.formatTokens(totals.sentTokens))
+                .frame(width: 75, alignment: .trailing)
+            Text(appState.formatTokens(totals.receivedTokens))
+                .frame(width: 75, alignment: .trailing)
+            Text(appState.formatCostInDollars(totals.totalCost))
+                .frame(width: 75, alignment: .trailing)
+        }
+        .font(.system(size: 11, design: .monospaced))
     }
 
     @ViewBuilder

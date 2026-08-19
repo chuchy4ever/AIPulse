@@ -102,11 +102,15 @@ struct Provider: Codable {
 struct ProviderTotals: Codable {
     let totalTokens: Int
     let totalCost: Double
+    let sentTokens: Int
+    let receivedTokens: Int
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         totalTokens = try c.decodeIfPresent(Int.self, forKey: .totalTokens) ?? 0
         totalCost = try c.decodeIfPresent(Double.self, forKey: .totalCost) ?? 0
+        sentTokens = try c.decodeIfPresent(Int.self, forKey: .sentTokens) ?? 0
+        receivedTokens = try c.decodeIfPresent(Int.self, forKey: .receivedTokens) ?? 0
     }
 }
 

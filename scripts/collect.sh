@@ -557,6 +557,11 @@ for entry in codex_daily_data.get("daily", []):
 
 output["codex"]["totals"] = codex_totals
 
+for totals in (output["claude"]["totals"], output["codex"]["totals"]):
+    if totals:
+        totals["sentTokens"] = sent_tokens(totals)
+        totals["receivedTokens"] = received_tokens(totals)
+
 weekly_history = []
 week_map = defaultdict(lambda: {"tokens": 0, "cost": 0, "sentTokens": 0, "receivedTokens": 0})
 
