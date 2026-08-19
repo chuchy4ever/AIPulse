@@ -1016,8 +1016,11 @@ struct HistorySectionView: View {
 
             if !rows.isEmpty {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 12) {
+                    // Charts need headroom: the topmost Y-axis label sits above
+                    // the plot area and was being clipped by the picker.
+                    VStack(alignment: .leading, spacing: 16) {
                         renderChart()
+                            .padding(.top, 10)
 
                         renderNoCacheChart()
 
