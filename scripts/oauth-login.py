@@ -98,14 +98,18 @@ class Callback(http.server.BaseHTTPRequestHandler):
 
 
 def exchange(code, verifier, redirect_uri, state):
-    payload = json.dumps({
+    return post_token({
         "grant_type": "authorization_code",
         "code": code,
         "redirect_uri": redirect_uri,
         "client_id": CLIENT_ID,
         "code_verifier": verifier,
         "state": state,
-    }).encode()
+    })
+
+
+def post_token(body):
+    payload = json.dumps(body).encode()
 
     req = urllib.request.Request(
         TOKEN_URL,
@@ -256,5 +260,61 @@ def run():
     return 0
 
 
+def refresh():
+    """Renews the access token without a browser.
+
+    The sign-in lasts eight hours, so without this the gauge freezes three
+    times a day and the only cure is clicking through a login. Rotation is
+    handled by store(): whatever refresh token comes back replaces the old one.
+    """
+    current = subprocess.run(
+        ["security", "find-generic-password", "-s", KEYCHAIN_SERVICE, "-w"],
+        capture_output=True, text=True,
+    )
+    if current.returncode != 0:
+        print("REFRESH: v Keychainu nic není", file=sys.stderr)
+        return 1
+
+    try:
+        oauth = json.loads(current.stdout.strip()).get("claudeAiOauth") or {}
+    except json.JSONDecodeError:
+        print("REFRESH: Keychain nejde přečíst", file=sys.stderr)
+        return 1
+
+    token = oauth.get("refreshToken")
+    if not token:
+        print("REFRESH: chybí refresh token, je potřeba se přihlásit", file=sys.stderr)
+        return 2
+
+    try:
+        tokens = post_token({
+            "grant_type": "refresh_token",
+            "refresh_token": token,
+            "client_id": CLIENT_ID,
+        })
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode("utf-8", "replace")[:200]
+        # A refused refresh token will not start working; say so plainly so the
+        # caller stops retrying and asks for a login instead.
+        print(f"REFRESH SELHAL: HTTP {e.code} {detail}", file=sys.stderr)
+        return 2
+    except Exception as e:
+        print(f"REFRESH SELHAL: {type(e).__name__}", file=sys.stderr)
+        return 1
+
+    if "access_token" not in tokens:
+        print("REFRESH SELHAL: odpověď neobsahuje token", file=sys.stderr)
+        return 2
+
+    try:
+        store(tokens)
+    except Exception as e:
+        print(f"ULOŽENÍ SELHALO: {e}", file=sys.stderr)
+        return 1
+
+    print("OK", file=sys.stderr)
+    return 0
+
+
 if __name__ == "__main__":
-    sys.exit(run())
+    sys.exit(refresh() if "--refresh" in sys.argv else run())

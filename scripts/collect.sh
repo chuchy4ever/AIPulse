@@ -166,6 +166,33 @@ EOF
 } >> "$LOG_FILE" 2>&1
 
 
+# The sign-in lasts eight hours; without renewing it the gauge freezes three
+# times a day. Done before the collection so the run that follows has a live
+# token, and only when it is actually needed - a refresh costs a request and
+# rotates the token.
+if [ -x "${DATA_DIR}/oauth-login.py" ]; then
+    needs_refresh=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null | python3 -c "
+import sys, json, time
+try:
+    d = json.load(sys.stdin)['claudeAiOauth']
+except Exception:
+    print('no'); raise SystemExit
+expires = d.get('expiresAt', 0) / 1000
+# A minute of margin: a token that dies mid-request is a failed request.
+print('yes' if d.get('refreshToken') and expires - 60 < time.time() else 'no')
+" 2>/dev/null || echo "no")
+
+    if [ "$needs_refresh" = "yes" ]; then
+        if python3 "${DATA_DIR}/oauth-login.py" --refresh 2>>"$LOG_FILE"; then
+            echo "[$(date -Iseconds)] Token obnoven" >> "$LOG_FILE"
+            # The half-hour backoff was for a dead sign-in. It is alive again,
+            # so waiting it out would leave the gauge frozen for no reason.
+        else
+            echo "[$(date -Iseconds)] Token se nepodařilo obnovit, je potřeba přihlášení" >> "$LOG_FILE"
+        fi
+    fi
+fi
+
 python3 << 'PYTHON_SCRIPT' > "$TMP_FILE" 2>> "$LOG_FILE"
 import json
 import sys
@@ -224,26 +251,6 @@ def fetch_api_limits(old_limits=None):
         if kept['session'] or kept['weekly'] or stale:
             return kept
         return None
-
-    # Retrying a dead sign-in every five minutes is how a lapsed login turned
-    # into a 429 that outlived it. Once the credentials are the problem, ask
-    # again at half past the hour, not at every tick.
-    if old_limits.get('stale') in ('auth_expired', 'no_token'):
-        last_try = old_limits.get('lastTryAt')
-        if last_try:
-            try:
-                waited = (now - datetime.fromisoformat(last_try)).total_seconds()
-                if waited < 1800:
-                    print(f"[{now.isoformat()}] Limits: SKIPPED backoff", file=sys.stderr)
-                    return {
-                        'session': old_limits.get('session'),
-                        'weekly': old_limits.get('weekly'),
-                        'fetchedAt': old_limits.get('fetchedAt'),
-                        'stale': old_limits.get('stale'),
-                        'lastTryAt': last_try,
-                    }
-            except ValueError:
-                pass
 
     oauth = get_oauth()
     token = oauth.get('accessToken')
