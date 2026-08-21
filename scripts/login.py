@@ -121,6 +121,15 @@ BROWSER_OK = 0
 BROWSER_USER_STOPPED = (2, 3, 4)   # timed out, refused, mismatched state
 
 
+def refresh_now():
+    """Runs the collector so data.json stops describing a state that is over."""
+    try:
+        subprocess.run(["bash", str(COLLECT_SCRIPT)], timeout=120,
+                       capture_output=True)
+    except Exception as e:
+        log_message(f"ERROR_REFRESHING: {type(e).__name__}")
+
+
 def run_browser_login():
     """The whole sign-in in the browser. Returns the script's exit code."""
     script = Path(__file__).with_name("oauth-login.py")
@@ -147,7 +156,12 @@ def run_login():
 
     if check_logged_in():
         log_message("ALREADY_LOGGED_IN")
-        show_dialog("Claude Code", "Už jsi přihlášený do Claude Code.")
+        # The panel shows the last collection, so after a sign-in that happened
+        # elsewhere it keeps saying "Nepřihlášen" for up to five minutes - which
+        # is exactly when the user clicks this button and is told he is already
+        # signed in. Collect now so the answer and the panel agree.
+        refresh_now()
+        show_dialog("Claude Code", "Už jsi přihlášený do Claude Code, stav se právě obnovil.")
         return True
 
     browser_rc = run_browser_login()
@@ -155,10 +169,9 @@ def run_login():
     if browser_rc == BROWSER_OK and check_logged_in():
         log_message("LOGIN_SUCCESS_BROWSER")
         show_dialog("Claude Code", "Přihlášení proběhlo úspěšně.")
-        try:
-            subprocess.Popen(["bash", str(COLLECT_SCRIPT)])
-        except Exception as e:
-            log_message(f"ERROR_STARTING_COLLECT: {e}")
+        # Synchronous on purpose: the success dialog should not appear over a
+        # panel that still says the opposite.
+        refresh_now()
         return True
 
     # Walking away or refusing is an answer. Opening a second window with the
@@ -280,11 +293,7 @@ def run_login():
             log_message("LOGIN_SUCCESS")
             show_dialog("Claude Code", "Přihlášení proběhlo úspěšně.")
 
-            try:
-                subprocess.Popen(["bash", str(COLLECT_SCRIPT)])
-                log_message("COLLECT_SCRIPT_STARTED")
-            except Exception as e:
-                log_message(f"ERROR_STARTING_COLLECT: {e}")
+            refresh_now()
 
             return True
 
