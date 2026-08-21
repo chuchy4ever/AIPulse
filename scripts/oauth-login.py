@@ -180,19 +180,43 @@ def store(tokens):
 
     record["claudeAiOauth"] = {k: v for k, v in oauth.items() if v is not None}
 
-    # Hex through stdin: -w would put the token in argv, where ps can read it,
-    # and quoting raw JSON on a security(1) command line does not survive the
-    # quotes inside it.
+    # Hex, because raw JSON does not survive quoting on a security(1) command
+    # line. Which channel carries it depends on size: `security -i` reads the
+    # command from stdin and keeps the secret out of argv, but it truncates a
+    # long line - that is how this record got cut in half and took the sign-in
+    # with it. Past that point the secret goes through argv instead, briefly
+    # visible to `ps`, which is the lesser harm against a corrupted keychain.
     payload = json.dumps(record).encode().hex()
     command = (
         f'add-generic-password -U -s "{KEYCHAIN_SERVICE}" '
         f'-a "{KEYCHAIN_ACCOUNT}" -X {payload}\n'
     )
 
-    written = subprocess.run(["security", "-i"], input=command,
-                             capture_output=True, text=True)
+    if len(command) < 3500:
+        written = subprocess.run(["security", "-i"], input=command,
+                                 capture_output=True, text=True)
+    else:
+        written = subprocess.run(
+            ["security", "add-generic-password", "-U",
+             "-s", KEYCHAIN_SERVICE, "-a", KEYCHAIN_ACCOUNT, "-X", payload],
+            capture_output=True, text=True,
+        )
+
     if written.returncode != 0 or "error" in written.stderr.lower():
         raise RuntimeError(f"zápis do Keychainu selhal: {written.stderr.strip()[:200]}")
+
+    # Read it back before calling it stored: a truncated write reports success.
+    check = subprocess.run(
+        ["security", "find-generic-password", "-s", KEYCHAIN_SERVICE, "-w"],
+        capture_output=True, text=True,
+    )
+    try:
+        stored = json.loads(check.stdout.strip())
+    except json.JSONDecodeError:
+        raise RuntimeError("zápis do Keychainu se poškodil (nečitelný JSON)")
+
+    if not (stored.get("claudeAiOauth") or {}).get("accessToken"):
+        raise RuntimeError("zápis do Keychainu neprošel celý")
 
 
 def run():
