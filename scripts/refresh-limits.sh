@@ -9,33 +9,33 @@ LOG_FILE="$DATA_DIR/collect.log"
 
 log() { echo "[$(date -Iseconds)] limits: $1" >> "$LOG_FILE"; }
 
-TOKEN=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null \
-  | python3 -c "import sys,json;print(json.load(sys.stdin)['claudeAiOauth']['accessToken'])" 2>/dev/null)
+read_token() {
+  security find-generic-password -s "AIPulse-credentials" -a "aipulse" -w 2>/dev/null \
+    | python3 -c "import sys,json;print(json.load(sys.stdin)['claudeAiOauth']['accessToken'])" 2>/dev/null
+}
 
-if [ -z "${TOKEN:-}" ] && [ -f "$HOME/.claude/.credentials.json" ]; then
-  TOKEN=$(python3 -c "import json,os;print(json.load(open(os.path.expanduser('~/.claude/.credentials.json')))['claudeAiOauth']['accessToken'])" 2>/dev/null)
-fi
+TOKEN=$(read_token)
 
 if [ -z "${TOKEN:-}" ]; then
   log "FAILED no-token"
-  echo "No Claude Code credentials available" >&2
+  echo "AIPulse nema vlastni prihlaseni, spust: python3 ~/.local/share/aipulse/oauth-login.py" >&2
   exit 1
 fi
 
-# Claude Code stores when the token dies; saying so up front beats a 401 that
-# reads like the service is down.
-EXPIRED=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null \
-  | python3 -c "
-import sys, json, time
-try:
-    d = json.load(sys.stdin)['claudeAiOauth']
-    print('yes' if d.get('expiresAt', 0) / 1000 < time.time() else 'no')
-except Exception:
-    print('no')
-" 2>/dev/null)
-
-if [ "$EXPIRED" = "yes" ]; then
+# Keeping the token alive is ensure-token.sh's job, because collect.sh needs the
+# same thing. With no way to refresh there is no point asking for limits: a dead
+# token earns a 401.
+if ! "$DATA_DIR/ensure-token.sh"; then
   log "FAILED expired"
+  echo "AUTH_EXPIRED" >&2
+  exit 1
+fi
+
+# After a refresh the Keychain holds a different token than the one read above.
+TOKEN=$(read_token)
+
+if [ -z "${TOKEN:-}" ]; then
+  log "FAILED no-token"
   echo "AUTH_EXPIRED" >&2
   exit 1
 fi

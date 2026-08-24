@@ -28,6 +28,7 @@ TMP_OPENAI="$DATA_DIR/.tmp.openai.json"
 
 mkdir -p "$DATA_DIR"
 
+
 # Every run writes the same .tmp.* files, so two overlapping runs - the launchd
 # job meeting a manual one - leave each other with half a dataset. mkdir is the
 # atomic primitive available here; macOS ships no flock(1).
@@ -48,6 +49,13 @@ if ! mkdir "$LOCK_DIR" 2>/dev/null; then
 fi
 echo $$ > "$LOCK_DIR/pid"
 trap 'rm -rf "$LOCK_DIR"' EXIT
+
+# Behind the lock on purpose: a run that is about to turn around here has no
+# business spending a refresh token. `|| true` is required - the script exits
+# non-zero when it cannot refresh, and this file runs under `set -e`. Collection
+# should carry on regardless: ccusage and the status pages need no Claude token,
+# and losing them over a sign-in would be a needless loss.
+"$DATA_DIR/ensure-token.sh" || true
 
 {
   echo "[$(date -Iseconds)] Starting collection..."
@@ -171,7 +179,7 @@ EOF
 # token, and only when it is actually needed - a refresh costs a request and
 # rotates the token.
 if [ -x "${DATA_DIR}/oauth-login.py" ]; then
-    needs_refresh=$(security find-generic-password -s "Claude Code-credentials" -w 2>/dev/null | python3 -c "
+    needs_refresh=$(security find-generic-password -s "AIPulse-credentials" -a "aipulse" -w 2>/dev/null | python3 -c "
 import sys, json, time
 try:
     d = json.load(sys.stdin)['claudeAiOauth']
@@ -210,7 +218,8 @@ def fetch_api_limits(old_limits=None):
     def get_oauth():
         try:
             result = subprocess.run(
-                ['security', 'find-generic-password', '-s', 'Claude Code-credentials', '-w'],
+                ['security', 'find-generic-password', '-s', 'AIPulse-credentials',
+                 '-a', 'aipulse', '-w'],
                 capture_output=True, text=True, timeout=5
             )
             if result.returncode == 0:
@@ -218,14 +227,6 @@ def fetch_api_limits(old_limits=None):
                     return json.loads(result.stdout.strip()).get('claudeAiOauth', {})
                 except:
                     pass
-        except:
-            pass
-
-        try:
-            creds_path = os.path.expanduser('~/.claude/.credentials.json')
-            if os.path.exists(creds_path):
-                with open(creds_path) as f:
-                    return json.load(f).get('claudeAiOauth', {})
         except:
             pass
 

@@ -34,8 +34,12 @@ SCOPES = (
 # Cloudflare turns away the default urllib signature with a 1010, so the
 # request goes out looking like what actually talks to this endpoint.
 USER_AGENT = "claude-cli/2.1.210 (external, cli)"
-KEYCHAIN_SERVICE = "Claude Code-credentials"
-KEYCHAIN_ACCOUNT = "unknown"
+# Vlastni zaznam, ne ten od Claude Code. Sdileny zaznam znamenal dve veci:
+# refresh tokeny se pri pouziti otaceji, takze kdo obnovil druhy, nasel token
+# uz spotrebovany -- a neuplny zapis odsud rozbil prihlaseni nastroje, ktery
+# se pouziva cely den. Stalo se to 21. 8. 2026.
+KEYCHAIN_SERVICE = "AIPulse-credentials"
+KEYCHAIN_ACCOUNT = "aipulse"
 WAIT_SECONDS = 300
 
 DONE_PAGE = """<!doctype html><html lang="cs"><meta charset="utf-8">
@@ -142,7 +146,8 @@ def store(tokens):
     """Replace only the Claude sign-in; the record holds other credentials."""
     record = {}
     current = subprocess.run(
-        ["security", "find-generic-password", "-s", KEYCHAIN_SERVICE, "-w"],
+        ["security", "find-generic-password", "-s", KEYCHAIN_SERVICE,
+         "-a", KEYCHAIN_ACCOUNT, "-w"],
         capture_output=True, text=True,
     )
     if current.returncode == 0:
@@ -207,7 +212,8 @@ def store(tokens):
 
     # Read it back before calling it stored: a truncated write reports success.
     check = subprocess.run(
-        ["security", "find-generic-password", "-s", KEYCHAIN_SERVICE, "-w"],
+        ["security", "find-generic-password", "-s", KEYCHAIN_SERVICE,
+         "-a", KEYCHAIN_ACCOUNT, "-w"],
         capture_output=True, text=True,
     )
     try:
@@ -292,7 +298,8 @@ def refresh():
     handled by store(): whatever refresh token comes back replaces the old one.
     """
     current = subprocess.run(
-        ["security", "find-generic-password", "-s", KEYCHAIN_SERVICE, "-w"],
+        ["security", "find-generic-password", "-s", KEYCHAIN_SERVICE,
+         "-a", KEYCHAIN_ACCOUNT, "-w"],
         capture_output=True, text=True,
     )
     if current.returncode != 0:
