@@ -50,11 +50,10 @@ fi
 echo $$ > "$LOCK_DIR/pid"
 trap 'rm -rf "$LOCK_DIR"' EXIT
 
-# Behind the lock on purpose: a run that is about to turn around here has no
-# business spending a refresh token. `|| true` is required - the script exits
-# non-zero when it cannot refresh, and this file runs under `set -e`. Collection
-# should carry on regardless: ccusage and the status pages need no Claude token,
-# and losing them over a sign-in would be a needless loss.
+# Až za zámkem: běh, který se tady stejně otočí, nemá co obnovovat token.
+# `|| true` je nutné — skript vrací nenulově, když se obnovit nedá, a tenhle
+# soubor běží pod `set -e`. Sběr má pokračovat i tak: ccusage ani stavové
+# stránky claudovský token nepotřebují.
 "$DATA_DIR/ensure-token.sh" || true
 
 {
@@ -172,34 +171,6 @@ EOF
   echo "[$(date -Iseconds)] Aggregating data via Python..."
 
 } >> "$LOG_FILE" 2>&1
-
-
-# The sign-in lasts eight hours; without renewing it the gauge freezes three
-# times a day. Done before the collection so the run that follows has a live
-# token, and only when it is actually needed - a refresh costs a request and
-# rotates the token.
-if [ -x "${DATA_DIR}/oauth-login.py" ]; then
-    needs_refresh=$(security find-generic-password -s "AIPulse-credentials" -a "aipulse" -w 2>/dev/null | python3 -c "
-import sys, json, time
-try:
-    d = json.load(sys.stdin)['claudeAiOauth']
-except Exception:
-    print('no'); raise SystemExit
-expires = d.get('expiresAt', 0) / 1000
-# A minute of margin: a token that dies mid-request is a failed request.
-print('yes' if d.get('refreshToken') and expires - 60 < time.time() else 'no')
-" 2>/dev/null || echo "no")
-
-    if [ "$needs_refresh" = "yes" ]; then
-        if python3 "${DATA_DIR}/oauth-login.py" --refresh 2>>"$LOG_FILE"; then
-            echo "[$(date -Iseconds)] Token obnoven" >> "$LOG_FILE"
-            # The half-hour backoff was for a dead sign-in. It is alive again,
-            # so waiting it out would leave the gauge frozen for no reason.
-        else
-            echo "[$(date -Iseconds)] Token se nepodařilo obnovit, je potřeba přihlášení" >> "$LOG_FILE"
-        fi
-    fi
-fi
 
 python3 << 'PYTHON_SCRIPT' > "$TMP_FILE" 2>> "$LOG_FILE"
 import json

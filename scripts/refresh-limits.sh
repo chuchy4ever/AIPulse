@@ -22,16 +22,15 @@ if [ -z "${TOKEN:-}" ]; then
   exit 1
 fi
 
-# Keeping the token alive is ensure-token.sh's job, because collect.sh needs the
-# same thing. With no way to refresh there is no point asking for limits: a dead
-# token earns a 401.
+# O živý token se stará ensure-token.sh, protože totéž potřebuje i collect.sh.
+# Když se obnovit nedá, nemá smysl se ptát na limity — skončí to 401.
 if ! "$DATA_DIR/ensure-token.sh"; then
   log "FAILED expired"
   echo "AUTH_EXPIRED" >&2
   exit 1
 fi
 
-# After a refresh the Keychain holds a different token than the one read above.
+# Po obnově je v klíčence jiný token než ten přečtený výš.
 TOKEN=$(read_token)
 
 if [ -z "${TOKEN:-}" ]; then

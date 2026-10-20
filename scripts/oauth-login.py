@@ -14,6 +14,7 @@ import base64
 import hashlib
 import http.server
 import json
+import os
 import secrets
 import socket
 import subprocess
@@ -41,6 +42,7 @@ USER_AGENT = "claude-cli/2.1.210 (external, cli)"
 KEYCHAIN_SERVICE = "AIPulse-credentials"
 KEYCHAIN_ACCOUNT = "aipulse"
 WAIT_SECONDS = 300
+DATA_DIR = os.path.expanduser("~/.local/share/aipulse")
 
 DONE_PAGE = """<!doctype html><html lang="cs"><meta charset="utf-8">
 <title>Přihlášeno</title>
@@ -225,6 +227,21 @@ def store(tokens):
         raise RuntimeError("zápis do Keychainu neprošel celý")
 
 
+def mark_signed_in():
+    """Nové přihlášení: zapíše čas pro připomínku a zruší stopku po mrtvém tokenu."""
+    try:
+        with open(os.path.join(DATA_DIR, ".signed-in-at"), "w") as f:
+            f.write(str(int(time.time())))
+        for name in (".token-dead", ".token-reminder"):
+            try:
+                os.remove(os.path.join(DATA_DIR, name))
+            except FileNotFoundError:
+                pass
+    except OSError as e:
+        # Přihlášení samo prošlo; bez značky jen nepřijde připomínka.
+        print(f"VAROVÁNÍ: značku přihlášení nešlo zapsat: {e}", file=sys.stderr)
+
+
 def run():
     verifier, challenge = pkce_pair()
     state = secrets.token_urlsafe(24)
@@ -286,6 +303,7 @@ def run():
         print(f"ULOŽENÍ SELHALO: {e}", file=sys.stderr)
         return 6
 
+    mark_signed_in()
     print("OK", file=sys.stderr)
     return 0
 
@@ -325,10 +343,10 @@ def refresh():
         })
     except urllib.error.HTTPError as e:
         detail = e.read().decode("utf-8", "replace")[:200]
-        # A refused refresh token will not start working; say so plainly so the
-        # caller stops retrying and asks for a login instead.
+        # Odmítnutý refresh token (400/401) sám od sebe fungovat nezačne, proto 2
+        # a volající přestane zkoušet. Jiný kód je výpadek serveru, ten přejde.
         print(f"REFRESH SELHAL: HTTP {e.code} {detail}", file=sys.stderr)
-        return 2
+        return 2 if e.code in (400, 401) else 1
     except Exception as e:
         print(f"REFRESH SELHAL: {type(e).__name__}", file=sys.stderr)
         return 1

@@ -1,55 +1,83 @@
 #!/bin/bash
 set -uo pipefail
 
-# The one place that cares whether the sign-in is still alive.
+# Jediné místo, které se stará o to, aby byl přihlašovací token živý.
 #
-# Nothing used to. An access token lives eight hours and collection runs around
-# the clock, so a Mac that sleeps through the night wakes up to limits that no
-# longer load. It does not look broken: collect.sh keeps the last known figure on
-# screen when the token is gone, so it reads as "the limits never went back to
-# zero" rather than "the sign-in died at 02:51".
+# Dřív ho nehlídal nikdo. Access token žije osm hodin, sběr běží pořád — takže
+# stačilo, aby Mac přes noc spal, a ráno se limity přestaly načítat. Nevypadalo
+# to jako porucha: collect.sh nechává při vypršení svítit poslední známé číslo,
+# takže to působilo, jako by limity nenaskočily zpátky na nulu.
 #
-# The renewal existed from the start - oauth-login.py --refresh - and no one
-# called it.
+# Obnova existovala od začátku (oauth-login.py --refresh), jen ji nikdo nevolal.
 #
-# Two callers: collect.sh and refresh-limits.sh. Both may call it whenever they
-# like; with a healthy token this does nothing.
+# Volají to dvě cesty, refresh-limits.sh a collect.sh. Obě smí volat kdykoli:
+# když je token v pořádku, tenhle skript neudělá nic.
 #
-# Exit code: 0 the token is usable, 1 it is not and a sign-in is needed.
+# Návratový kód: 0 = token je použitelný, 1 = není a je potřeba se přihlásit.
 
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
 
 DATA_DIR="$HOME/.local/share/aipulse"
 LOG_FILE="$DATA_DIR/collect.log"
 
-# "Already said this once." Without it the notification would arrive every five
-# minutes and be dismissed unread by lunchtime.
+# Značka „o tomhle už jsem řekl". Bez ní by upozornění chodilo každých pět minut
+# a člověk by ho po půl dni odklikával bez čtení.
 ALERT_MARKER="$DATA_DIR/.token-alert"
 
-# How far ahead of expiry to renew. Two collection intervals - waiting for the
-# token to actually die would cost one failed run every time.
+# O kolik dřív se obnovuje, než token vyprší. Dva intervaly sběru — kdyby se
+# čekalo až na vypršení, jeden běh by pokaždé propadl na hraně.
 MARGIN=600
+
+# Stopka po odmítnutém refresh tokenu. Obsahuje otisk (sha256) toho tokenu:
+# dokud je v klíčence pořád on, další pokus by jen znovu dostal invalid_grant.
+# Jiný otisk znamená nové přihlášení a zkouší se znovu.
+DEAD_MARKER="$DATA_DIR/.token-dead"
+
+# Připomínka před koncem přihlášení. Server ho po zhruba 27 dnech zahodí celé
+# a obnova ho neprodlouží (18. 9. 2026 vypršelo po přihlášení z 22. 8.).
+# Kdy přesně, v odpovědi neříká, takže se počítá od času přihlášení.
+SIGNED_IN_FILE="$DATA_DIR/.signed-in-at"
+REMIND_MARKER="$DATA_DIR/.token-reminder"
+REMIND_AFTER=$(( 24 * 86400 ))
 
 log() { echo "[$(date -Iseconds)] token: $1" >> "$LOG_FILE"; }
 
-# The text is always a literal, never anything the server said: no foreign string
-# has any business reaching osascript.
+# Text je vždycky literál, nikdy nic z odpovědi serveru — do osascriptu se nemá
+# co dostat cizí řetězec.
 alert_once() {
     [ -f "$ALERT_MARKER" ] && return 0
-    osascript -e 'display notification "Vypršelo přihlášení, limity se přestaly načítat. Spusť: python3 ~/.local/share/aipulse/oauth-login.py" with title "AIPulse" sound name "Basso"' >/dev/null 2>&1
+    nohup bash -c '
+        out=$(osascript -e "$1" 2>/dev/null)
+        case "$out" in
+            *"button returned:Přihlásit"*) python3 "$2" ;;
+        esac
+    ' _ 'display dialog "Vypršelo přihlášení, limity se přestaly načítat." with title "AIPulse" buttons {"Později", "Přihlásit"} default button "Přihlásit" giving up after 3600' "$DATA_DIR/login.py" >/dev/null 2>&1 &
     : > "$ALERT_MARKER"
 }
 
-# The second half matters as much as the first: a marker that is never cleared
-# silences the next outage too.
+# Druhá půlka je stejně důležitá jako první: značka, která se nikdy nesmaže,
+# umlčí i příští poruchu.
 alert_clear() {
     [ -f "$ALERT_MARKER" ] || return 0
     rm -f "$ALERT_MARKER"
     osascript -e 'display notification "Přihlášení je zpátky, limity se zase načítají." with title "AIPulse"' >/dev/null 2>&1
 }
 
-# Seconds until expiry. A missing or unreadable record yields 0 - "expired",
-# which is the safer guess of the two.
+# Jednou za přihlášení; značku maže až oauth-login.py při novém přihlášení.
+remind_if_due() {
+    [ -f "$REMIND_MARKER" ] && return 0
+    local since
+    since=$(cat "$SIGNED_IN_FILE" 2>/dev/null || true)
+    [[ "$since" =~ ^[0-9]+$ ]] || return 0
+    local age=$(( $(date +%s) - since ))
+    [ "$age" -ge "$REMIND_AFTER" ] || return 0
+    osascript -e 'display notification "Přihlášení za pár dní vyprší. Přihlas se znovu: python3 ~/.local/share/aipulse/oauth-login.py" with title "AIPulse" sound name "Glass"' >/dev/null 2>&1
+    : > "$REMIND_MARKER"
+    log "připomínka: přihlášení je staré $(( age / 86400 )) dní"
+}
+
+# Vteřiny do vypršení. Když záznam chybí nebo se nedá přečíst, vyjde 0 — tedy
+# „vypršelo", což je bezpečnější odhad než „platí".
 seconds_left() {
     security find-generic-password -s "AIPulse-credentials" -a "aipulse" -w 2>/dev/null \
         | python3 -c "
@@ -73,29 +101,43 @@ except Exception:
 " 2>/dev/null
 }
 
-# A refresh token is single-use and rotates as it is spent. Whoever refreshes
-# second finds their copy already consumed - and loses the sign-in with it. That
-# is exactly how this broke on 2026-08-21; the fix back then only moved the record
-# away from Claude Code's, which does nothing about two runs here racing.
+# Otisk refresh tokenu pro stopku. Samotný token se nikam nezapisuje.
+refresh_fingerprint() {
+    security find-generic-password -s "AIPulse-credentials" -a "aipulse" -w 2>/dev/null \
+        | python3 -c "
+import sys, json, hashlib
+try:
+    token = json.load(sys.stdin)['claudeAiOauth'].get('refreshToken')
+    if token:
+        print(hashlib.sha256(token.encode()).hexdigest())
+except Exception:
+    pass
+" 2>/dev/null
+}
+
+# Refresh token je jednorázový a při použití se otáčí. Kdo obnoví druhý, najde
+# ten svůj už spotřebovaný — a přijde tím o přihlášení. Přesně tak to dopadlo
+# 21. 8. 2026 (viz komentář v oauth-login.py); tehdejší oprava jen oddělila
+# záznam od Claude Code, souběh uvnitř aipulse nechránila.
 #
-# And they can race: this is called both by collect.sh from launchd and by
-# refresh-limits.sh, which the AIPulse app launches on its own.
+# A souběh tu reálně hrozí: tenhle skript volá jak collect.sh z launchd, tak
+# refresh-limits.sh, který si spouští sama aplikace AIPulse.app.
 #
-# mkdir is the atomic primitive available - macOS ships no flock(1) - the same
-# approach collect.sh uses for its own lock.
+# mkdir je atomické a macOS nemá flock(1) — stejný postup jako zámek sběru
+# v collect.sh.
 LOCK_DIR="$DATA_DIR/.token-lock"
 
 release_lock() { rm -rf "$LOCK_DIR"; }
 
-# Waits rather than giving up: whoever gets here needs the token. When the wait
-# runs out it returns 1 and the caller decides based on the token's actual state.
+# Čeká, místo aby to vzdal: kdo se sem dostane, token potřebuje. Když čekání
+# vyprší, vrátí 1 a volající se rozhodne podle toho, jak je na tom token teď.
 acquire_lock() {
     local waited=0
     while ! mkdir "$LOCK_DIR" 2>/dev/null; do
         local owner
         owner=$(cat "$LOCK_DIR/pid" 2>/dev/null || true)
         if [ -n "$owner" ] && ! kill -0 "$owner" 2>/dev/null; then
-            log "clearing lock left by a dead run (pid $owner)"
+            log "uklízím zámek po mrtvém běhu (pid $owner)"
             rm -rf "$LOCK_DIR"
             continue
         fi
@@ -110,6 +152,8 @@ acquire_lock() {
     return 0
 }
 
+remind_if_due
+
 LEFT=$(seconds_left)
 [ -z "${LEFT:-}" ] && LEFT=0
 
@@ -118,22 +162,30 @@ if [ "$LEFT" -ge "$MARGIN" ]; then
     exit 0
 fi
 
+# Mrtvý token se znovu nezkouší. Upozornění už odešlo, když stopka vznikla.
+if [ -f "$DEAD_MARKER" ]; then
+    if [ "$(cat "$DEAD_MARKER" 2>/dev/null)" = "$(refresh_fingerprint)" ]; then
+        exit 1
+    fi
+    rm -f "$DEAD_MARKER"
+fi
+
 if ! acquire_lock; then
-    # Someone else has been refreshing for over half a minute. Do not pile on with
-    # a second attempt: two refreshes are the precise failure this lock prevents.
+    # Někdo jiný obnovuje déle než půl minuty. Nepřidávat se k němu druhým
+    # pokusem: dva refreshe jsou přesně ta chyba, které se tenhle zámek brání.
     LEFT=$(seconds_left)
     [ -z "${LEFT:-}" ] && LEFT=0
     if [ "$LEFT" -ge "$MARGIN" ]; then
         alert_clear
         exit 0
     fi
-    log "another run holds the refresh, skipping"
+    log "obnovu drží jiný běh, přeskakuji"
     exit 1
 fi
 
-# Again, now under the lock: between the first check and acquiring it someone else
-# may have refreshed. Without this second look the refresh token would be spent
-# twice in a row, a second apart - the same bug, only harder to find.
+# Znovu, už pod zámkem: mezi první kontrolou a jeho získáním mohl token obnovit
+# někdo jiný. Bez téhle druhé kontroly by se refresh token spotřeboval dvakrát
+# za sebou, jen o vteřinu později — což je ta samá chyba, jen hůř k nalezení.
 LEFT=$(seconds_left)
 [ -z "${LEFT:-}" ] && LEFT=0
 
@@ -148,26 +200,30 @@ if [ "$(has_refresh_token)" != "yes" ]; then
     exit 1
 fi
 
-log "expires in ${LEFT}s, refreshing"
+log "vyprší za ${LEFT} s, obnovuji"
 
-# oauth-login.py reads and writes the Keychain itself; nothing is passed through
-# arguments or the environment, because argv is world-readable via ps. Its output
-# is captured rather than appended straight to the log: it reports success on
-# stderr too, which left a line in the log with no timestamp on it.
+# Token si oauth-login.py čte i zapisuje sám do klíčenky; nepředává se přes
+# argumenty ani prostředí, protože argv je čitelné přes ps. Výstup se zachytává,
+# protože skript hlásí i úspěch na stderr a v logu z toho byl řádek bez značky.
 refresh_err=$(python3 "$DATA_DIR/oauth-login.py" --refresh 2>&1 >/dev/null)
 refresh_rc=$?
 
 if [ $refresh_rc -ne 0 ]; then
-    # A refused refresh token will not start working on its own. Told apart from
-    # "expired" so the log says whether waiting is enough or a sign-in is due.
+    # Odmítnutý refresh token sám od sebe fungovat nezačne. Odlišuje se od
+    # „vypršelo", aby bylo z logu poznat, jestli stačí počkat, nebo se přihlásit.
     log "FAILED refresh"
     [ -n "${refresh_err:-}" ] && log "$(printf '%s' "$refresh_err" | tail -1)"
+    # Kód 2 = server token odmítl. Stopka zabrání dalším pokusům do přihlášení.
+    if [ $refresh_rc -eq 2 ]; then
+        refresh_fingerprint > "$DEAD_MARKER"
+        log "přihlášení vypršelo, další pokusy stojí do nového přihlášení"
+    fi
     alert_once
     exit 1
 fi
 
 LEFT=$(seconds_left)
 [ -z "${LEFT:-}" ] && LEFT=0
-log "refreshed, good for another ${LEFT}s"
+log "obnoven, platí ještě ${LEFT} s"
 alert_clear
 exit 0
