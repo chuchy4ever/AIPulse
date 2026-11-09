@@ -6,7 +6,11 @@ struct AIPulseApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {
-        Settings { }
+        // ⌘, opens SwiftUI's own Settings window; send it to the real settings window instead
+        // of leaving an empty one on screen.
+        Settings {
+            Color.clear.frame(width: 1, height: 1)
+        }
     }
 }
 
@@ -32,6 +36,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         NSApplication.shared.setActivationPolicy(.accessory)
 
         appState = AppState()
+        // ⌘, and the app menu open SwiftUI's own Settings window, which has no content here;
+        // swap it for the real settings window.
+        NotificationCenter.default.addObserver(forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main) { [weak self] note in
+            guard let window = note.object as? NSWindow,
+                  window !== SettingsWindowHolder.shared.window,
+                  window.identifier?.rawValue.contains("Settings") == true,
+                  let appState = self?.appState else { return }
+            SettingsWindowHolder.shared.open(appState: appState)
+            // SwiftUI is still presenting the window at this point; closing it right away is ignored.
+            DispatchQueue.main.async { window.close() }
+        }
 
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 

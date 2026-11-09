@@ -86,27 +86,7 @@ struct HeaderView: View {
     @ObservedObject var appState: AppState
 
     func openSettingsWindow() {
-        if let existing = SettingsWindowHolder.shared.window {
-            existing.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            return
-        }
-        let settingsWindow = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 780, height: 620),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-        settingsWindow.center()
-        let language = appState.config?.language ?? "cs"
-        settingsWindow.title = L.t("settings.title", language)
-        settingsWindow.isReleasedWhenClosed = false
-        settingsWindow.minSize = NSSize(width: 760, height: 600)
-        let hostingView = NSHostingController(rootView: SettingsView(appState: appState))
-        settingsWindow.contentViewController = hostingView
-        SettingsWindowHolder.shared.window = settingsWindow
-        settingsWindow.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        SettingsWindowHolder.shared.open(appState: appState)
     }
 
     var body: some View {
@@ -1882,4 +1862,28 @@ struct NotificationsSectionView: View {
 final class SettingsWindowHolder {
     static let shared = SettingsWindowHolder()
     var window: NSWindow?
+
+    func open(appState: AppState) {
+        if let existing = SettingsWindowHolder.shared.window {
+            existing.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        let settingsWindow = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 780, height: 620),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        settingsWindow.center()
+        let language = appState.config?.language ?? "cs"
+        settingsWindow.title = L.t("settings.title", language)
+        settingsWindow.isReleasedWhenClosed = false
+        settingsWindow.minSize = NSSize(width: 760, height: 600)
+        let hostingView = NSHostingController(rootView: SettingsView(appState: appState))
+        settingsWindow.contentViewController = hostingView
+        SettingsWindowHolder.shared.window = settingsWindow
+        settingsWindow.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
 }
