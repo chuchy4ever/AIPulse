@@ -22,9 +22,9 @@ AIPulse reads your local agent logs and your own account quota. It runs entirely
 - **Flexible display** — five bar styles: text, compact dot, progress bar, battery, or icon + bar
 - **Both providers** — sign in to Claude Code and Codex separately, from the app
 - **Multi-language** — Czech and English, settable in preferences
-- **Configurable collection** — choose refresh interval (default 5 minutes via launchd) and work week length
+- **Configurable collection** — choose refresh interval (default 5 minutes) and work week length
 - **Fast limits refresh** — dedicated script fetches quota percentages in under a second
-- **Launch at login** — runs as background menu bar app with scheduled data collection
+- **One app** — the menu bar app schedules data collection itself; nothing runs when it is quit
 
 ## Requirements
 
@@ -45,14 +45,13 @@ cd AIPulse
 
 The script will:
 
-1. Create `~/.local/share/aipulse/` for data and scripts
-2. Copy collection scripts and set permissions
-3. Migrate data from any old installation
-4. Build the app in release mode
-5. Create the app bundle at `/Applications/AIPulse.app`
-6. Install a launchd job to collect data every 5 minutes (configurable)
-7. Code-sign the app with ad-hoc signature
-8. Launch the app
+1. Create `~/.local/share/aipulse/` for data
+2. Migrate data from any old installation
+3. Build the app in release mode
+4. Create the app bundle at `/Applications/AIPulse.app` with the collection scripts in `Contents/Resources/scripts`
+5. Code-sign the app with your Apple Development identity (ad-hoc when there is none)
+6. Remove the launchd job and script copies left by older versions
+7. Launch the app
 
 ## How It Works
 
@@ -79,14 +78,14 @@ Limits object: session%, weekly%, reset times
 
 **Collection cycle:**
 
-- Launcher (`launchd`) runs `scripts/collect.sh` every N minutes (default 5, user-configurable via app)
+- The app runs its bundled `collect.sh` at launch and then every N minutes (default 5, user-configurable via app)
 - `collect.sh` calls `ccusage` to parse local logs, fetches service status from status.claude.com and status.openai.com, and writes aggregated JSON to `data.json`
 - App reads `data.json` and renders it; you click the menu bar icon to expand a popover
 - Limits are fetched on-demand via `refresh-limits.sh` (fast, ~1 sec) using OAuth token from Keychain
 
 **Privacy and security**
 
-- The app reads only local files: `~/.claude/projects/` (agent logs, via `ccusage`) and its own directory `~/.local/share/aipulse/`.
+- The app reads only local files: `~/.claude/projects/` (agent logs, via `ccusage`) and its own data directory `~/.local/share/aipulse/`.
 - The only outbound requests are to `api.anthropic.com` (your quota) and `status.claude.com` / `status.openai.com` (service status).
 - The OAuth token is never written to disk, never logged, and never sent anywhere except Anthropic's own API.
 - No telemetry, no analytics, no third-party services.
@@ -142,7 +141,7 @@ Configuration file: `~/.local/share/aipulse/config.json`
 | `barMetric` | string | `"weekly"`, `"session"`, `"tokens"` | `"weekly"` | What to show in menu bar: percent to limit or token count |
 | `barStyle` | string | `"percentage"`, `"compact"`, `"progressBar"`, `"batteryClassic"`, `"iconWithBar"` | `"percentage"` | Menu bar appearance: text only, dot, bar, battery icon, or icon+text |
 | `workDays` | int | 1–7 | 5 | Days per week to use for "daily budget" calculations |
-| `refreshMinutes` | int | 5, 10, 15, 30, 60 | 5 | Interval for launchd collection (minutes) |
+| `refreshMinutes` | int | 5, 10, 15, 30, 60 | 5 | Interval for data collection (minutes) |
 | `language` | string | `"cs"`, `"en"` | `"cs"` | UI language |
 | `historyPeriod` | string | `"day"`, `"week"`, `"month"` | `"week"` | Default view in history tab |
 | `notifyServices` | string[] | `"anthropic:<id>"`, `"openai:<id>"` | `[]` | Components to raise outage alerts for; set through Settings → Notifications |
@@ -165,15 +164,9 @@ Example:
 ## Uninstalling
 
 ```bash
-launchctl bootout "gui/$(id -u)/cz.chuchy.aipulse-collect"
-rm -f ~/Library/LaunchAgents/cz.chuchy.aipulse-collect.plist
 rm -rf /Applications/AIPulse.app
 rm -rf ~/.local/share/aipulse
 ```
-
-Remove the plist as well, not just the loaded job: `bootout` only unloads it for
-this session, so a leftover file gets picked up again at the next login and keeps
-running a collector that is no longer there.
 
 Or from the app: Settings → Sign-in → Log out (removes the OAuth session) → quit app → manually delete as above.
 
@@ -189,20 +182,18 @@ Or from the app: Settings → Sign-in → Log out (removes the OAuth session) �
 **"Data se nepodařilo načíst" / "Could not load data"**
 - Ensure `~/.local/share/aipulse/data.json` exists and is valid JSON
 - Run `cat ~/.local/share/aipulse/data.json | jq .` to validate
-- Run `~/.local/share/aipulse/collect.sh` manually and check `~/.local/share/aipulse/collect.log`
+- Run `/Applications/AIPulse.app/Contents/Resources/scripts/collect.sh` manually and check `~/.local/share/aipulse/collect.log`
 
 **No limits showing (percent displays as 0%)**
 - Ensure Claude Code is logged in: `claude auth status`
-- Run `~/.local/share/aipulse/refresh-limits.sh` manually
-- Check `~/.local/share/aipulse/stderr.log` and `stdout.log` for launchd errors
+- Run `/Applications/AIPulse.app/Contents/Resources/scripts/refresh-limits.sh` manually
 
-**Launchd not running**
-- Check status: `launchctl list cz.chuchy.aipulse-collect`
-- View logs: `log stream --predicate 'process == "bash"' --level debug`
+**Data stopped updating**
+- Collection runs only while AIPulse is running; keep it in Login Items (Settings → General)
 
 **Very old data**
 - Increase the collection frequency in Settings → General → Update every
-- Or run `~/.local/share/aipulse/collect.sh` manually
+- Or run `/Applications/AIPulse.app/Contents/Resources/scripts/collect.sh` manually
 
 ## License
 

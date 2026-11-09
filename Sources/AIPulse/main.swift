@@ -51,7 +51,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
 
         appState?.loadData()
-        appState?.scheduleCollection(minutes: appState?.config?.refreshMinutes ?? 5)
         appState?.runCollectScriptAsync()
 
         NotificationCenter.default.addObserver(

@@ -56,6 +56,10 @@ class AppState: ObservableObject {
                 self.config = loadedConfig
                 self.error = loadError
                 self.updateBarDisplay()
+                // The first load is when the saved interval becomes known; scheduling earlier would always use the default.
+                if self.collectTimer == nil {
+                    self.scheduleCollection(minutes: loadedConfig?.refreshMinutes ?? 5)
+                }
 
                 // Not while snapshotting: the watcher writes its state file and can
                 // fire a notification, and a screenshot tool must do neither.
