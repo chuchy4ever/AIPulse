@@ -144,7 +144,7 @@ struct DonutSectionView: View {
 
     var body: some View {
         return VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 28) {
+            HStack(alignment: .top, spacing: 16) {
                 VStack(alignment: .leading, spacing: 7) {
                     Text(metricLabel)
                         .font(.system(size: 11, weight: .semibold))
@@ -189,8 +189,8 @@ struct DonutSectionView: View {
                 .frame(width: 6, height: 6)
             Text(shortComponentName(component.name))
                 .font(.system(size: 12))
-                .fixedSize(horizontal: true, vertical: false)
                 .lineLimit(1)
+                .truncationMode(.tail)
         }
         .help(tooltipForComponent(component, incidents: incidents))
     }
@@ -235,16 +235,16 @@ struct DonutChartView: View {
 
     private var arc: some View {
         Circle()
-            .inset(by: 8)
+            .inset(by: 6)
             .trim(from: 0, to: CGFloat(percent) / 100)
-            .stroke(Color(color), style: StrokeStyle(lineWidth: 16, lineCap: .round))
+            .stroke(Color(color), style: StrokeStyle(lineWidth: 12, lineCap: .round))
     }
 
     var body: some View {
         ZStack {
             Circle()
-                .inset(by: 8)
-                .stroke(Color.gray.opacity(0.18), lineWidth: 16)
+                .inset(by: 6)
+                .stroke(Color.gray.opacity(0.18), lineWidth: 12)
 
             if isRefreshing {
                 TimelineView(.animation) { context in
@@ -260,10 +260,10 @@ struct DonutChartView: View {
             }
 
             Text("\(percent)%")
-                .font(.system(size: 42, weight: .bold, design: .rounded))
+                .font(.system(size: 30, weight: .bold, design: .rounded))
                 .opacity(isRefreshing ? 0.45 : 1)
         }
-        .frame(width: 172, height: 172)
+        .frame(width: 120, height: 120)
     }
 }
 
@@ -363,6 +363,8 @@ struct LimitRowView: View {
         let language = appState.config?.language ?? "cs"
 
         guard let date = parseISO(isoString) else { return "—" }
+        // The API keeps reporting an expired session window; a past reset date only confuses.
+        guard date > Date() else { return "" }
 
         let calendar = Calendar.current
 
