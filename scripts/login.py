@@ -5,8 +5,9 @@ import os
 from pathlib import Path
 from datetime import datetime
 
+SCRIPT_DIR = Path(__file__).resolve().parent
 LOG_PATH = Path.home() / ".local/share/aipulse/login.log"
-COLLECT_SCRIPT = Path.home() / ".local/share/aipulse/collect.sh"
+COLLECT_SCRIPT = SCRIPT_DIR / "collect.sh"
 
 def log_message(msg):
     timestamp = datetime.now().isoformat()
@@ -26,7 +27,7 @@ def set_path():
 def check_logged_in():
     try:
         result = subprocess.run(
-            ["bash", str(Path.home() / ".local/share/aipulse/ensure-token.sh")],
+            ["bash", str(SCRIPT_DIR / "ensure-token.sh")],
             capture_output=True,
             text=True,
             timeout=30,
@@ -64,9 +65,7 @@ def refresh_now():
 
 def run_browser_login():
     """The whole sign-in in the browser. Returns the script's exit code."""
-    script = Path(__file__).with_name("oauth-login.py")
-    if not script.exists():
-        script = Path.home() / ".local/share/aipulse/oauth-login.py"
+    script = SCRIPT_DIR / "oauth-login.py"
 
     try:
         result = subprocess.run(

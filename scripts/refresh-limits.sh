@@ -3,6 +3,7 @@ set -uo pipefail
 
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DATA_DIR="$HOME/.local/share/aipulse"
 DATA_FILE="$DATA_DIR/data.json"
 LOG_FILE="$DATA_DIR/collect.log"
@@ -18,13 +19,13 @@ TOKEN=$(read_token)
 
 if [ -z "${TOKEN:-}" ]; then
   log "FAILED no-token"
-  echo "AIPulse nema vlastni prihlaseni, spust: python3 ~/.local/share/aipulse/oauth-login.py" >&2
+  echo "AIPulse nema vlastni prihlaseni, prihlas se v aplikaci AIPulse." >&2
   exit 1
 fi
 
 # O živý token se stará ensure-token.sh, protože totéž potřebuje i collect.sh.
 # Když se obnovit nedá, nemá smysl se ptát na limity — skončí to 401.
-if ! "$DATA_DIR/ensure-token.sh"; then
+if ! "$SCRIPT_DIR/ensure-token.sh"; then
   log "FAILED expired"
   echo "AUTH_EXPIRED" >&2
   exit 1
@@ -41,14 +42,14 @@ fi
 
 BODY_FILE=$(mktemp)
 # The token is passed on stdin, never as a process argument: argv is world-readable via ps.
-if ! printf '%s' "$TOKEN" | python3 "$DATA_DIR/fetch-usage.py" "$BODY_FILE"; then
+if ! printf '%s' "$TOKEN" | python3 "$SCRIPT_DIR/fetch-usage.py" "$BODY_FILE"; then
   log "FAILED request"
   rm -f "$BODY_FILE"
   echo "Usage request failed, see $LOG_FILE" >&2
   exit 1
 fi
 
-python3 "$DATA_DIR/apply-limits.py" "$BODY_FILE" "$DATA_FILE"
+python3 "$SCRIPT_DIR/apply-limits.py" "$BODY_FILE" "$DATA_FILE"
 RC=$?
 rm -f "$BODY_FILE"
 

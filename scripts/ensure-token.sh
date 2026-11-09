@@ -17,6 +17,7 @@ set -uo pipefail
 
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DATA_DIR="$HOME/.local/share/aipulse"
 LOG_FILE="$DATA_DIR/collect.log"
 
@@ -51,7 +52,7 @@ alert_once() {
         case "$out" in
             *"button returned:Přihlásit"*) python3 "$2" ;;
         esac
-    ' _ 'display dialog "Vypršelo přihlášení, limity se přestaly načítat." with title "AIPulse" buttons {"Později", "Přihlásit"} default button "Přihlásit" giving up after 3600' "$DATA_DIR/login.py" >/dev/null 2>&1 &
+    ' _ 'display dialog "Vypršelo přihlášení, limity se přestaly načítat." with title "AIPulse" buttons {"Později", "Přihlásit"} default button "Přihlásit" giving up after 3600' "$SCRIPT_DIR/login.py" >/dev/null 2>&1 &
     : > "$ALERT_MARKER"
 }
 
@@ -71,7 +72,7 @@ remind_if_due() {
     [[ "$since" =~ ^[0-9]+$ ]] || return 0
     local age=$(( $(date +%s) - since ))
     [ "$age" -ge "$REMIND_AFTER" ] || return 0
-    osascript -e 'display notification "Přihlášení za pár dní vyprší. Přihlas se znovu: python3 ~/.local/share/aipulse/oauth-login.py" with title "AIPulse" sound name "Glass"' >/dev/null 2>&1
+    osascript -e 'display notification "Přihlášení za pár dní vyprší. Přihlas se znovu v aplikaci AIPulse." with title "AIPulse" sound name "Glass"' >/dev/null 2>&1
     : > "$REMIND_MARKER"
     log "připomínka: přihlášení je staré $(( age / 86400 )) dní"
 }
@@ -205,7 +206,7 @@ log "vyprší za ${LEFT} s, obnovuji"
 # Token si oauth-login.py čte i zapisuje sám do klíčenky; nepředává se přes
 # argumenty ani prostředí, protože argv je čitelné přes ps. Výstup se zachytává,
 # protože skript hlásí i úspěch na stderr a v logu z toho byl řádek bez značky.
-refresh_err=$(python3 "$DATA_DIR/oauth-login.py" --refresh 2>&1 >/dev/null)
+refresh_err=$(python3 "$SCRIPT_DIR/oauth-login.py" --refresh 2>&1 >/dev/null)
 refresh_rc=$?
 
 if [ $refresh_rc -ne 0 ]; then

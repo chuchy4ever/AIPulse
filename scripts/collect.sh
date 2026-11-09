@@ -2,6 +2,8 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 export PATH="$HOME/.local/bin:$HOME/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 # launchd runs with a minimal environment, so a node installed via nvm is not on PATH.
 # Take the newest version that actually carries ccusage - older ones are still on disk.
@@ -54,7 +56,7 @@ trap 'rm -rf "$LOCK_DIR"' EXIT
 # `|| true` je nutné — skript vrací nenulově, když se obnovit nedá, a tenhle
 # soubor běží pod `set -e`. Sběr má pokračovat i tak: ccusage ani stavové
 # stránky claudovský token nepotřebují.
-"$DATA_DIR/ensure-token.sh" || true
+"$SCRIPT_DIR/ensure-token.sh" || true
 
 {
   echo "[$(date -Iseconds)] Starting collection..."
