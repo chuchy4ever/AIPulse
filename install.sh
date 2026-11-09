@@ -52,6 +52,20 @@ fi
 
 echo "   - Build successful"
 
+# Stop the old collector first so it cannot run against a half-replaced install
+echo "- Cleaning up old launchd job..."
+OLD_LABEL="com.chuchy.usagebar-collect"
+launchctl bootout "gui/$(id -u)/$OLD_LABEL" 2>/dev/null || true
+
+# Remove previous launchd job and scripts from DATA_DIR
+echo "- Removing previous install (launchd job, scripts in $DATA_DIR)..."
+launchctl bootout "gui/$(id -u)/$LAUNCHD_LABEL" 2>/dev/null || true
+rm -f "$HOME/Library/LaunchAgents/$LAUNCHD_LABEL.plist"
+rm -f "$DATA_DIR/collect.sh" "$DATA_DIR/ensure-token.sh" "$DATA_DIR/login.py" \
+      "$DATA_DIR/oauth-login.py" "$DATA_DIR/refresh-limits.sh" "$DATA_DIR/apply-limits.py" \
+      "$DATA_DIR/fetch-usage.py" "$DATA_DIR/set-interval.sh"
+rm -rf "$DATA_DIR/__pycache__"
+
 # 4. Stop old app if running
 echo "4. Stopping old application if running..."
 if pgrep -x "UsageBar" > /dev/null 2>&1; then
@@ -147,22 +161,8 @@ echo "   - Signing identity: ${IDENTITY:-ad-hoc, the keychain may ask again afte
 codesign --force --deep --sign "${IDENTITY:--}" "$APP_BUNDLE"
 echo "   - Signed"
 
-# 9. Unload old launchd job if exists
-echo "9. Cleaning up old launchd job..."
-OLD_LABEL="com.chuchy.usagebar-collect"
-launchctl bootout "gui/$(id -u)/$OLD_LABEL" 2>/dev/null || true
-
-# 10. Remove previous launchd job and scripts from DATA_DIR
-echo "10. Removing previous install (launchd job, scripts in $DATA_DIR)..."
-launchctl bootout "gui/$(id -u)/$LAUNCHD_LABEL" 2>/dev/null || true
-rm -f "$HOME/Library/LaunchAgents/$LAUNCHD_LABEL.plist"
-rm -f "$DATA_DIR/collect.sh" "$DATA_DIR/ensure-token.sh" "$DATA_DIR/login.py" \
-      "$DATA_DIR/oauth-login.py" "$DATA_DIR/refresh-limits.sh" "$DATA_DIR/apply-limits.py" \
-      "$DATA_DIR/fetch-usage.py" "$DATA_DIR/set-interval.sh"
-rm -rf "$DATA_DIR/__pycache__"
-
-# 11. Launch the app
-echo "11. Launching application..."
+# 9. Launch the app
+echo "9. Launching application..."
 open "$APP_BUNDLE"
 sleep 2
 
@@ -173,8 +173,8 @@ else
     exit 1
 fi
 
-# 12. Verify config migration
-echo "12. Verifying configuration..."
+# 10. Verify config migration
+echo "10. Verifying configuration..."
 if [[ -f "$DATA_DIR/config.json" ]]; then
     echo "   - Configuration file found"
     if grep -q '"workDays"' "$DATA_DIR/config.json"; then

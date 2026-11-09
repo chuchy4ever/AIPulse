@@ -1,4 +1,6 @@
 #!/bin/bash
+# Scripts live in the signed app bundle; bytecode caches there would break the signature.
+export PYTHONDONTWRITEBYTECODE=1
 set -uo pipefail
 
 export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
