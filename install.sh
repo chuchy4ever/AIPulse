@@ -139,9 +139,11 @@ if [ -f "$REPO_DIR/Resources/AIPulse.icns" ]; then
   echo "  Icon installed"
 fi
 
-# Stálá identita: macOS si k ní pamatuje povolení ke klíčence. Ad-hoc podpis ("-")
-# se mění s každým buildem, takže se povolení pokaždé ztratí.
-IDENTITY="${SIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null | awk -F'"' '/Apple Development/ {print $2; exit}' || true)}"
+# A stable identity keeps keychain permissions across reinstalls; an ad-hoc signature ("-")
+# changes with every build and macOS forgets them. Sign by certificate hash, not name:
+# a renewed certificate keeps the name of the expired one, which makes the name ambiguous.
+IDENTITY="${SIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null | awk '/Apple Development/ {print $2; exit}' || true)}"
+echo "   - Signing identity: ${IDENTITY:-ad-hoc, the keychain may ask again after each reinstall}"
 codesign --force --deep --sign "${IDENTITY:--}" "$APP_BUNDLE"
 echo "   - Signed"
 

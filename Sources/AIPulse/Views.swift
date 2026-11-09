@@ -621,10 +621,7 @@ struct ErrorView: View {
                 .foregroundColor(.secondary)
 
             Button(L.t("error.run_collect", language)) {
-                appState.runCollectScript()
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                    appState.loadData()
-                }
+                appState.runCollectScriptAsync()
             }
             .buttonStyle(.bordered)
         }

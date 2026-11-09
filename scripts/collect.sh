@@ -5,7 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 export PATH="$HOME/.local/bin:$HOME/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
-# launchd runs with a minimal environment, so a node installed via nvm is not on PATH.
+# The app starts this with a minimal environment, so a node installed via nvm is not on PATH.
 # Take the newest version that actually carries ccusage - older ones are still on disk.
 if ! command -v ccusage >/dev/null 2>&1 && [ -d "$HOME/.nvm/versions/node" ]; then
   for candidate in $(ls -d "$HOME/.nvm/versions/node"/*/bin 2>/dev/null | sort -Vr); do
@@ -31,7 +31,7 @@ TMP_OPENAI="$DATA_DIR/.tmp.openai.json"
 mkdir -p "$DATA_DIR"
 
 
-# Every run writes the same .tmp.* files, so two overlapping runs - the launchd
+# Every run writes the same .tmp.* files, so two overlapping runs - the scheduled
 # job meeting a manual one - leave each other with half a dataset. mkdir is the
 # atomic primitive available here; macOS ships no flock(1).
 LOCK_DIR="$DATA_DIR/.lock"
@@ -142,7 +142,7 @@ EOF
     echo "{}" > "$TMP_OPENAI"
   fi
 
-  # macOS has no timeout(1), and a CLI that hangs would keep this launchd job
+  # macOS has no timeout(1), and a CLI that hangs would keep this scheduled job
   # alive forever, so bound both auth probes with perl's alarm.
   run_bounded() {
     perl -e 'alarm shift; exec @ARGV' "$@" 2>/dev/null || true

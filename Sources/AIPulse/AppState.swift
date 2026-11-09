@@ -57,7 +57,7 @@ class AppState: ObservableObject {
                 self.error = loadError
                 self.updateBarDisplay()
                 // The first load is when the saved interval becomes known; scheduling earlier would always use the default.
-                if self.collectTimer == nil {
+                if self.collectTimer == nil && !AppState.isSnapshotting {
                     self.scheduleCollection(minutes: loadedConfig?.refreshMinutes ?? 5)
                 }
 
@@ -250,26 +250,6 @@ class AppState: ObservableObject {
         }
     }
 
-    func runCollectScript() {
-        guard let scriptPath = Scripts.url("collect.sh"), FileManager.default.fileExists(atPath: scriptPath.path) else {
-            let lang = config?.language ?? "cs"
-            collectError = String(format: L.t("error.collect_start_failed", lang), "collect.sh" as NSString)
-            return
-        }
-
-        let process = Process()
-        process.executableURL = scriptPath
-
-        do {
-            try process.run()
-        } catch {
-            let lang = config?.language ?? "cs"
-            DispatchQueue.main.async {
-                self.collectError = String(format: L.t("error.collect_start_failed", lang), "\(error)" as NSString)
-            }
-        }
-    }
-
     func runCollectScriptAsync() {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             guard let scriptPath = Scripts.url("collect.sh"), FileManager.default.fileExists(atPath: scriptPath.path) else {
@@ -291,9 +271,26 @@ class AppState: ObservableObject {
                 self?.collectError = nil
             }
 
+            // Drain stderr while the script runs: a full pipe would block it forever.
+            var errorData = Data()
+            let errorLock = NSLock()
+            pipe.fileHandleForReading.readabilityHandler = { handle in
+                let chunk = handle.availableData
+                errorLock.lock()
+                errorData.append(chunk)
+                errorLock.unlock()
+            }
+
             do {
                 try process.run()
+                // A hung collector would keep isCollecting true and stop every later scheduled run.
+                DispatchQueue.global().asyncAfter(deadline: .now() + 300) {
+                    if process.isRunning {
+                        process.terminate()
+                    }
+                }
                 process.waitUntilExit()
+                pipe.fileHandleForReading.readabilityHandler = nil
 
                 if process.terminationStatus == 0 {
                     DispatchQueue.main.async {
@@ -303,8 +300,9 @@ class AppState: ObservableObject {
                     }
                 } else {
                     let lang = self?.config?.language ?? "cs"
-                    let errorData = pipe.fileHandleForReading.readDataToEndOfFile()
+                    errorLock.lock()
                     let errorText = String(data: errorData, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                    errorLock.unlock()
                     let errorMsg = errorText.isEmpty ? L.t("error.unknown", lang) : errorText
 
                     DispatchQueue.main.async {
@@ -327,10 +325,14 @@ class AppState: ObservableObject {
     func scheduleCollection(minutes: Int) {
         collectTimer?.invalidate()
         let interval = TimeInterval(max(1, minutes) * 60)
-        collectTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
             guard let self = self, !self.isCollecting else { return }
             self.runCollectScriptAsync()
         }
+        timer.tolerance = interval * 0.1
+        // Common modes: the default mode pauses while a menu or the popover is tracking.
+        RunLoop.main.add(timer, forMode: .common)
+        collectTimer = timer
     }
 
     func updateCollectInterval(_ minutes: Int) {

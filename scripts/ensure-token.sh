@@ -121,7 +121,7 @@ except Exception:
 # 21. 8. 2026 (viz komentář v oauth-login.py); tehdejší oprava jen oddělila
 # záznam od Claude Code, souběh uvnitř aipulse nechránila.
 #
-# A souběh tu reálně hrozí: tenhle skript volá jak collect.sh z launchd, tak
+# A souběh tu reálně hrozí: tenhle skript volá jak collect.sh z plánovače v aplikaci, tak
 # refresh-limits.sh, který si spouští sama aplikace AIPulse.app.
 #
 # mkdir je atomické a macOS nemá flock(1) — stejný postup jako zámek sběru
