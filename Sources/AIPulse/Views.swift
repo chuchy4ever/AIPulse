@@ -696,8 +696,7 @@ struct LoginSectionView: View {
     @State private var isLoggingIn = false
 
     func runLoginScript() {
-        let scriptPath = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".local/share/aipulse/login.py")
+        guard let scriptPath = Scripts.url("login.py"), FileManager.default.fileExists(atPath: scriptPath.path) else { return }
 
         let process = Process()
         process.executableURL = scriptPath
@@ -1509,7 +1508,7 @@ struct BarSettingsSectionView: View {
                                 if var config = appState.config {
                                     config.refreshMinutes = newValue
                                     appState.saveConfig(config)
-                                    appState.updateLaunchInterval(newValue)
+                                    appState.updateCollectInterval(newValue)
                                 }
                                 }
                         )) {

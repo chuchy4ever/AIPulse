@@ -247,8 +247,11 @@ class AppState: ObservableObject {
     }
 
     func runCollectScript() {
-        let scriptPath = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".local/share/aipulse/collect.sh")
+        guard let scriptPath = Scripts.url("collect.sh"), FileManager.default.fileExists(atPath: scriptPath.path) else {
+            let lang = config?.language ?? "cs"
+            collectError = String(format: L.t("error.collect_start_failed", lang), "collect.sh" as NSString)
+            return
+        }
 
         let process = Process()
         process.executableURL = scriptPath
@@ -265,8 +268,13 @@ class AppState: ObservableObject {
 
     func runCollectScriptAsync() {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let scriptPath = FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent(".local/share/aipulse/collect.sh")
+            guard let scriptPath = Scripts.url("collect.sh"), FileManager.default.fileExists(atPath: scriptPath.path) else {
+                DispatchQueue.main.async {
+                    let lang = self?.config?.language ?? "cs"
+                    self?.collectError = String(format: L.t("error.collect_start_failed", lang), "collect.sh" as NSString)
+                }
+                return
+            }
 
             let process = Process()
             process.executableURL = scriptPath
@@ -310,26 +318,19 @@ class AppState: ObservableObject {
         }
     }
 
-    func updateLaunchInterval(_ minutes: Int) {
-        let scriptPath = FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent(".local/share/aipulse/set-interval.sh")
+    private var collectTimer: Timer?
 
-        let process = Process()
-        process.executableURL = scriptPath
-        process.arguments = [String(minutes)]
-
-        let pipe = Pipe()
-        process.standardError = pipe
-
-        do {
-            try process.run()
-            process.waitUntilExit()
-        } catch {
-            let lang = config?.language ?? "cs"
-            DispatchQueue.main.async {
-                self.collectError = String(format: L.t("error.interval_failed", lang), "\(error)" as NSString)
-            }
+    func scheduleCollection(minutes: Int) {
+        collectTimer?.invalidate()
+        let interval = TimeInterval(max(1, minutes) * 60)
+        collectTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            guard let self = self, !self.isCollecting else { return }
+            self.runCollectScriptAsync()
         }
+    }
+
+    func updateCollectInterval(_ minutes: Int) {
+        scheduleCollection(minutes: minutes)
     }
 
     func logout(completion: @escaping (Bool, String?) -> Void) {
@@ -603,8 +604,13 @@ extension AppState {
             }
         }
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let script = FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent(".local/share/aipulse/refresh-limits.sh")
+            guard let script = Scripts.url("refresh-limits.sh"), FileManager.default.fileExists(atPath: script.path) else {
+                DispatchQueue.main.async {
+                    self?.isRefreshingLimits = false
+                    self?.collectError = L.t("error.limits_failed", self?.config?.language ?? "cs")
+                }
+                return
+            }
             let process = Process()
             process.executableURL = script
             let errorPipe = Pipe()
